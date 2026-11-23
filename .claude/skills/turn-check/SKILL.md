@@ -13,21 +13,21 @@ player asks, or if the critical alert is unclear without it.
 
 ## Getting the data
 
-Prefer the MCP tool `mcp__chancellor__get_turn_review` if it's available.
+Prefer the MCP tool `mcp__vizier__get_turn_review` if it's available.
 Otherwise run the same tool through the CLI from the repository root:
 
 ```bash
-.venv/bin/python -m chancellor.cli get_turn_review 2>/dev/null
+.venv/bin/python -m vizier.cli get_turn_review 2>/dev/null
 ```
 
 Any other Vizier tool works the same way, e.g.
-`.venv/bin/python -m chancellor.cli get_loyalty_options '{"city": "Nagoya"}'`
+`.venv/bin/python -m vizier.cli get_loyalty_options '{"city": "Nagoya"}'`
 (`--list` shows them all).
 
 If the output says "Can't reach the game", tell the player what's missing
 (Civ 6 running with a game loaded, `EnableTuner 1` in AppOptions.txt, nothing
 else holding the tuner connection) and offer the demo game:
-`.venv/bin/python -m chancellor.cli --fixture tests/fixtures/midgame.json get_turn_review`.
+`.venv/bin/python -m vizier.cli --fixture tests/fixtures/midgame.json get_turn_review`.
 Label demo results as demo, never as the player's game.
 
 ## Principles

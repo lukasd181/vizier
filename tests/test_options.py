@@ -1,5 +1,5 @@
-from chancellor.models import CityView, EmpireSnapshot, FixOption
-from chancellor.options import amenity_options, combine_fastest, rank
+from vizier.models import CityView, EmpireSnapshot, FixOption
+from vizier.options import amenity_options, combine_fastest, rank
 
 
 def test_rank_fastest_first_unknown_last():

@@ -1,22 +1,54 @@
 [project]
-name = "the-chancellor"
+# "vizier" is taken on PyPI, so the distribution is civ6-vizier; the import
+# package and commands are still `vizier`.
+name = "civ6-vizier"
 version = "0.1.0"
-description = "Vizier: a standalone Civ 6 mentor MCP server — fog-filtered turn reviews, fix-it options and goal tracking for human players"
+description = "Vizier: a Civilization VI mentor as an MCP server — fog-filtered turn reviews, fix-it options and goal tracking for human players"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Lucas Duong" }]
+keywords = ["civilization", "civ6", "mcp", "model-context-protocol", "claude", "mentor", "strategy-games"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment :: Turn Based Strategy",
+]
 dependencies = [
     # mcp 2.x renamed FastMCP; the server is written against 1.x.
     "mcp>=1.26,<2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/lukasd181/the-chancellor"
+Repository = "https://github.com/lukasd181/the-chancellor"
+Issues = "https://github.com/lukasd181/the-chancellor/issues"
+Changelog = "https://github.com/lukasd181/the-chancellor/blob/main/CHANGELOG.md"
+
 [project.scripts]
-chancellor-mcp = "chancellor.server:main"
+vizier = "vizier.cli:main"          # vizier setup | doctor | <tool>
+vizier-mcp = "vizier.server:main"   # the MCP server (stdio)
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/chancellor"]
+packages = ["src/vizier"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Ship the in-game panel mod so `vizier setup` can install it.
+"mod/VizierAlerts" = "vizier/mod/VizierAlerts"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/vizier", "mod", "tests", "docs", "README.md", "CHANGELOG.md", "LICENSE", "NOTICE"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [dependency-groups]

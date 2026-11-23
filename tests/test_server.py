@@ -4,18 +4,18 @@ import pytest
 from conftest import HIDDEN_MARKERS, MIDGAME, run
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from chancellor.fog import find_leaks
+from vizier.fog import find_leaks
 
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("CHANCELLOR_FIXTURE", str(MIDGAME))
-    monkeypatch.setenv("CHANCELLOR_DB", str(tmp_path / "server.sqlite3"))
-    monkeypatch.delenv("CHANCELLOR_DEBUG_FULL_VISION", raising=False)
+    monkeypatch.setenv("VIZIER_FIXTURE", str(MIDGAME))
+    monkeypatch.setenv("VIZIER_DB", str(tmp_path / "server.sqlite3"))
+    monkeypatch.delenv("VIZIER_DEBUG_FULL_VISION", raising=False)
 
 
 async def _calls(calls):
-    from chancellor.server import mcp
+    from vizier.server import mcp
 
     out = []
     async with create_connected_server_and_client_session(mcp._mcp_server) as client:

@@ -15,6 +15,19 @@ from chancellor import gamedata as gd
 from chancellor.models import CityView, EmpireSnapshot, FixOption
 
 
+def _tables(rules: dict[str, Any] | None) -> dict[str, Any]:
+    """Rule tables from the live ruleset when available, else gamedata's."""
+    r = rules or {}
+    return {
+        "ent_b": r.get("entertainment_buildings") or gd.ENTERTAINMENT_BUILDINGS,
+        "regional": r.get("regional_entertainment") or gd.REGIONAL_ENTERTAINMENT,
+        "house_b": r.get("housing_buildings") or gd.HOUSING_BUILDINGS,
+        "ent_d": r.get("entertainment_districts") or gd.ENTERTAINMENT_DISTRICTS,
+        "house_d": r.get("housing_districts") or gd.HOUSING_DISTRICTS,
+        "lux_cities": r.get("luxury_cities") or {},
+    }
+
+
 def _pretty(t: str) -> str:
     for pre in ("BUILDING_", "DISTRICT_", "POLICY_", "RESOURCE_", "UNIT_", "GOV_"):
         if t.startswith(pre):
@@ -89,7 +102,9 @@ def amenity_options(
     production: list[dict[str, Any]],
     policies: dict[str, Any],
     snap: EmpireSnapshot,
+    rules: dict[str, Any] | None = None,
 ) -> list[FixOption]:
+    t = _tables(rules)
     opts: list[FixOption] = []
     held = needs.get("luxuries_held", {})
 
@@ -121,22 +136,24 @@ def amenity_options(
                 turns=turns,
                 cost=cost,
                 confidence=conf,
-                notes=note + " A new luxury type gives +1 amenity to up to 4 cities, neediest first. Needs the improvement's tech.",
+                notes=note
+                + f" A new luxury type gives +1 amenity to up to {t['lux_cities'].get(rtype, 4)} cities, neediest first."
+                + " Needs the improvement's tech.",
             )
         )
 
     # 2. Entertainment buildings and districts this city can make now
     opts += _build_and_buy(
         production,
-        gd.ENTERTAINMENT_BUILDINGS,
+        t["ent_b"],
         snap.gold,
         "amenity",
         "building",
-        note_fn=lambda b: "Also reaches nearby cities (regional)." if b in gd.REGIONAL_ENTERTAINMENT else "",
+        note_fn=lambda b: "Also reaches nearby cities (regional)." if b in t["regional"] else "",
     )
     opts += [
         o
-        for o in _build_and_buy(production, gd.ENTERTAINMENT_DISTRICTS, snap.gold, "amenity", "district")
+        for o in _build_and_buy(production, t["ent_d"], snap.gold, "amenity", "district")
         if o.action.startswith("Build")  # districts can't be bought
     ]
 
@@ -349,11 +366,13 @@ def housing_options(
     needs: dict[str, Any],
     production: list[dict[str, Any]],
     snap: EmpireSnapshot,
+    rules: dict[str, Any] | None = None,
 ) -> list[FixOption]:
-    opts = _build_and_buy(production, gd.HOUSING_BUILDINGS, snap.gold, "housing", "building")
+    t = _tables(rules)
+    opts = _build_and_buy(production, t["house_b"], snap.gold, "housing", "building")
     opts += [
         o
-        for o in _build_and_buy(production, gd.HOUSING_DISTRICTS, snap.gold, "housing", "district")
+        for o in _build_and_buy(production, t["house_d"], snap.gold, "housing", "district")
         if o.action.startswith("Build")  # districts can't be bought
     ]
     for o in production:

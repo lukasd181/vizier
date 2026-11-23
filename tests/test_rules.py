@@ -276,3 +276,11 @@ def test_idle_gold_threshold_lower_early():
     late = snap(turn=120, gold=250, cities=two)
     assert "idle_gold:treasury" in ids(run_rules(RuleContext(snap=early))[0])
     assert "idle_gold:treasury" not in ids(run_rules(RuleContext(snap=late))[0])
+
+
+def test_luxury_surplus_uses_live_per_resource_reach():
+    # Cinnamon-style luxury feeding 6 cities: 6 cities need just 1 copy
+    s = snap(cities=[city(i, currently_building="X") for i in range(1, 7)],
+             luxuries={"RESOURCE_CINNAMON": 2}, luxury_cities={"RESOURCE_CINNAMON": 6})
+    a = next(a for a in run_rules(RuleContext(snap=s))[0] if a.rule == "luxury_surplus")
+    assert a.data["spare"] == {"RESOURCE_CINNAMON": 1}

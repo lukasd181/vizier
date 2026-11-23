@@ -179,8 +179,10 @@ def trade_slot(ctx: RuleContext) -> list[Alert]:
 # Happinesses table (gamedata): net +3 = Happy (+10% yields), net +5 = Ecstatic (+20%).
 # Below those, extra amenities change nothing, so only the next step is worth chasing.
 HAPPY_AT, ECSTATIC_AT = 3, 5
-# Each copy of a luxury gives an amenity to up to 4 cities (one copy per city
-# per type), so copies beyond ceil(cities / 4) do nothing for you.
+# Each copy of a luxury gives an amenity to up to Resources.Happiness cities
+# (4 for normal luxuries, verified with REA: ev_e2f029d8…), one copy per city
+# per type, so copies beyond ceil(cities / 4) do nothing. Live games use the
+# per-resource value from the loaded ruleset.
 CITIES_PER_LUXURY = 4
 
 
@@ -215,10 +217,14 @@ def luxury_surplus(ctx: RuleContext) -> list[Alert]:
     s = ctx.snap
     if not s.cities or not s.luxuries:
         return []
-    useful = -(-len(s.cities) // CITIES_PER_LUXURY)  # ceil
-    spare = {k: v - useful for k, v in s.luxuries.items() if v > useful}
+    def useful_for(res: str) -> int:
+        per = s.luxury_cities.get(res) or CITIES_PER_LUXURY
+        return -(-len(s.cities) // per)  # ceil
+
+    spare = {k: v - useful_for(k) for k, v in s.luxuries.items() if v > useful_for(k)}
     if not spare:
         return []
+    useful = useful_for(next(iter(spare)))
     pretty = ", ".join(f"{n} {k.replace('RESOURCE_', '').title()}" for k, n in spare.items())
     return [
         Alert(

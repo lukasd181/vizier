@@ -285,3 +285,43 @@ def rivals(snap: EmpireSnapshot, rows: list[dict[str, Any]]) -> str:
             out.append("   diplomacy: " + ", ".join(todo))
     out.append("Only civilizations you have met; numbers are what the World Rankings screen shows.")
     return "\n".join(out)
+
+
+def settle_spots(spots: list[dict[str, Any]], total: int) -> str:
+    if not spots:
+        return "No legal, revealed city sites found within 9 tiles. Explore further to reveal more land."
+    out = [f"Top {len(spots)} of {total} legal revealed sites (each at least 4 tiles from the others):"]
+    for i, s in enumerate(spots, 1):
+        tags = []
+        if s["fresh_water"]:
+            tags.append("fresh water")
+        elif s["coastal"]:
+            tags.append("coast")
+        else:
+            tags.append("no fresh water")
+        if s["hills"]:
+            tags.append("hills")
+        if s["luxuries"]:
+            lux = ", ".join(sorted({r.replace("RESOURCE_", "").title() for r in s["luxuries"]}))
+            tags.append(f"luxury: {lux}" + (f" ({s['new_luxury_types']} new type)" if s["new_luxury_types"] else ""))
+        if s.get("campus_adjacency"):
+            bits = []
+            if s["adjacent_mountains"]:
+                bits.append(f"{s['adjacent_mountains']} mountain")
+            if s.get("adjacent_reefs"):
+                bits.append(f"{s['adjacent_reefs']} reef")
+            tags.append(f"Campus adjacency nearby ~+{s['campus_adjacency']}" + (f" ({', '.join(bits)})" if bits else ""))
+        if s["strategics"]:
+            tags.append(f"{s['strategics']} strategic")
+        if s["foreign_tiles"]:
+            tags.append(f"{s['foreign_tiles']} foreign tile(s) nearby")
+        rec = " · the game's advisor recommends this too" if s["game_recommends"] else ""
+        out.append(
+            f"{i}. ({s['x']},{s['y']}) score {s['score']} · {s['distance']} tiles away · "
+            f"food {s['food']} / production {s['production']} nearby{rec}"
+        )
+        out.append("   " + "; ".join(tags))
+        if s["unrevealed_nearby"] >= 4:
+            out.append(f"   {s['unrevealed_nearby']} nearby tiles still unexplored: worth a look before committing")
+    out.append("Scores weigh nearby food and production (first ring double), fresh water, luxuries, hills and mountains; only revealed tiles count.")
+    return "\n".join(out)

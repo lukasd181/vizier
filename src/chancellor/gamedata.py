@@ -13,8 +13,11 @@ docs/game-data-evidence.md. Live values (a city's actual amenities, a
 building's actual cost after modifiers) always come from the running game —
 these tables are only for reasoning about *options* the game won't price.
 
-The cache is rewritten whenever the game loads a different ruleset, so a
-vanilla or Rise & Fall game can differ. `RULESET_SHA256` lets callers notice.
+The cache is rewritten whenever the game loads a different ruleset, and REA
+showed rulesets do differ (Palace amenities 1 vs 2; see
+docs/game-data-evidence.md). A live game therefore reads the entertainment,
+housing and luxury tables from GameInfo (lua_queries.build_rules_query); these
+constants are the fallback for fixtures and replays.
 """
 
 from __future__ import annotations

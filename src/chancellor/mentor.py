@@ -177,7 +177,7 @@ class Mentor:
 
     async def amenity_options(self, city: str | int) -> tuple[CityView, dict, list[FixOption], list[FixOption]]:
         cv, needs, production, policies, snap = await self._city_inputs(city)
-        opts = opt.amenity_options(cv, needs, production, policies, snap)
+        opts = opt.amenity_options(cv, needs, production, policies, snap, await self.source.rules())
         gap = max(0, -cv.net_amenities)
         return cv, needs, opts, opt.combine_fastest(opts, gap)
 
@@ -189,7 +189,7 @@ class Mentor:
 
     async def housing_options(self, city: str | int) -> tuple[CityView, dict, list[FixOption], list[FixOption]]:
         cv, needs, production, _policies, snap = await self._city_inputs(city)
-        opts = opt.housing_options(cv, needs, production, snap)
+        opts = opt.housing_options(cv, needs, production, snap, await self.source.rules())
         gap = max(0.0, cv.population - cv.housing + 1)
         return cv, needs, opts, opt.combine_fastest(opts, gap)
 
@@ -218,6 +218,9 @@ class Mentor:
 
     async def park_sites(self) -> list[dict[str, Any]]:
         return await self.source.park_sites()
+
+    async def settle_spots(self, limit: int = 5) -> tuple[list[dict[str, Any]], int]:
+        return await self.source.settle_spots(max(1, min(limit, 10)))
 
     async def highlight(
         self,

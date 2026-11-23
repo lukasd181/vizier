@@ -84,6 +84,13 @@ class FixtureSource:
     async def park_sites(self) -> list[dict[str, Any]]:
         return self.data.get("parks", [])
 
+    async def rules(self) -> dict[str, Any]:
+        return self.data.get("rules", {})
+
+    async def settle_spots(self, limit: int) -> tuple[list[dict[str, Any]], int]:
+        spots = self.data.get("settle", [])
+        return spots[:limit], len(spots)
+
     # UIWriter — records calls so tests can assert on them
     async def highlight(self, tiles: list[tuple[int, int]], color: str, look_at: bool) -> int:
         self.highlights = list(tiles)

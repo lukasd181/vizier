@@ -58,6 +58,31 @@ The complete bundle (12 records, 3.8 MB) was exported with
   were read, but their requirement sets weren't decoded. The conditions come
   from the card text.
 
+## Second ruleset: the live game (re-checked with REA)
+
+When a game is loaded, Civ 6 rewrites the cache for that game's ruleset. With
+the America/Prince game loaded the file became
+`8ba5359449d5a3d251fe02d12d5ef5ead52d93f575062e9833c6fa5cf6834718`:
+
+| Check | Evidence ID | Result |
+|---|---|---|
+| `GlobalParameters` (492 rows) | `ev_d2d991ca…75e91e8127` | **identical** to the first ruleset (spacing, housing, park, DVP, governor, identity values) |
+| `Buildings` | `ev_d75dd28c…cb409ebd` | 121 rows (138 before); **Palace Entertainment 2** (was 1) |
+| `Districts` | `ev_c5d91912…6aa1638` | 30 rows (36 before): no Preserve, Diplomatic Quarter, Hippodrome, Observatory, Oppidum, Thanh |
+| `Resources.Happiness` | `ev_e2f029d8…32fd7865` | every normal luxury feeds **4** cities; Perfume, Cinnamon, Cloves feed 6 |
+| `District_Adjacencies` | `ev_60784930…6e0602f` | Campus: mountains, jungle, districts, Government Plaza, geothermal, reef; Commercial Hub: river, harbor, districts, Government Plaza |
+| `Adjacency_YieldChanges` | `ev_39562247…7586f0d` | Campus: mountain **+1**, jungle **+1 per 2**, reef **+2**, geothermal **+2**, districts +1 per 2, Gov Plaza +1. Commercial Hub: river **+2**, harbor **+2**, districts +1 per 2, Gov Plaza +1 |
+
+What changed in the code because of this:
+- **Live rule tables.** `build_rules_query` reads entertainment, housing and
+  luxury reach from `GameInfo` once per game, and the fix-it options and
+  spare-luxury rule use them. `gamedata.py` is now only the fallback (fixtures,
+  replays). Verified live: Washington's amenities show the Palace's +2.
+- **Settle scoring** counts Campus adjacency with the verified values
+  (mountain +1, reef +2, geothermal +2, jungle +1 per 2).
+- **Luxury reach** in the spare-luxury rule is per resource
+  (`Resources.Happiness`), not a flat 4.
+
 ## Engine APIs, confirmed in the shipped UI Lua
 
 The mentor's Lua calls only APIs the game's own UI uses, found by searching
@@ -65,6 +90,8 @@ The mentor's Lua calls only APIs the game's own UI uses, found by searching
 
 | API | Shipped caller |
 |---|---|
+| `Players[me]:GetCities():IsValidFoundLocation(x, y)` | `DLC/PiratesScenario/Scripts/PiratesScenario_StartScript.lua:532` (settle legality; falls back to the 4-tile spacing rule) |
+| `pPlayer:GetGrandStrategicAI():GetSettlementRecommendations(n)` | `Base/Assets/UI/WorldViewIconsManager.lua:710` (the game's settler recommendations) |
 | `Game.GetNationalParks():GetPossibleParkTiles(player)` | `DLC/Expansion2/UI/Replacements/SelectedUnit_Expansion2.lua:59` — the engine's own park rule, used instead of re-implementing it |
 | `pCityGrowth:GetAmenities() - GetAmenitiesNeeded()` | `Base/Assets/UI/CitySupport.lua:526` (net amenities) |
 | `pCityGrowth:GetAmenitiesFrom*` / `GetHousingFrom*` | city panel breakdowns |

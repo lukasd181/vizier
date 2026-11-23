@@ -412,3 +412,45 @@ myCities[1].GetBuildQueue = function(self)
   bq.GetTurnsLeft = function(_, hash) return 8 end
   return bq
 end
+
+-- Settle-spot extras: yields, water, hills, and the game's advisor
+Plot.IsMountain = function(self) return self.mountain or false end
+Plot.IsHills = function(self) return self.hills or false end
+Plot.IsFreshWater = function(self) return self.fresh or false end
+Plot.IsCoastalLand = function(self) return false end
+Plot.GetYield = function(self, i) if i == 0 then return self.food or 2 end if i == 1 then return self.prodY or 1 end return 0 end
+P(4, 2).fresh = true; P(4, 2).hills = true
+P(5, 2).mountain = true
+P(3, 4).fresh = true
+P(4, 1).owner = -1
+for pid, p in pairs(Players) do
+  local cities = p.GetCities
+  p.GetCities = function(self)
+    local c = cities(self)
+    c.IsValidFoundLocation = function(_, x, y) return Map.GetPlotDistance(x, y, 0, 0) >= 4 end
+    return c
+  end
+end
+Players[0].GetGrandStrategicAI = function()
+  return { GetSettlementRecommendations = function(_, n) return { { SettlingLocation = P(4, 2).idx } } end }
+end
+
+-- Rule-table extras: live Entertainment/Housing/Happiness values (Palace 2 like
+-- the ruleset REA found in the live game), and a reef next to the best site
+GameInfo.Buildings["BUILDING_MONUMENT"].Entertainment = 0
+GameInfo.Buildings["BUILDING_ARENA"].Entertainment = 2
+GameInfo.Buildings["BUILDING_ARENA"].RegionalRange = 0
+do
+  local palace = { BuildingType = "BUILDING_PALACE", Entertainment = 2, Housing = 1, RegionalRange = 0, Index = #GameInfo.Buildings._rows, Hash = 9999 }
+  table.insert(GameInfo.Buildings._rows, palace)
+  GameInfo.Buildings[palace.Index] = palace
+  GameInfo.Buildings["BUILDING_PALACE"] = palace
+end
+GameInfo.Districts["DISTRICT_COMMERCIAL_HUB"].Entertainment = 0
+for _, r in ipairs(GameInfo.Resources._rows) do
+  if r.ResourceClassType == "RESOURCECLASS_LUXURY" then r.Happiness = 4 end
+end
+table.insert(GameInfo.Features._rows, { FeatureType = "FEATURE_REEF", Index = 1 })
+GameInfo.Features[1] = GameInfo.Features._rows[2]
+GameInfo.Features["FEATURE_REEF"] = GameInfo.Features._rows[2]
+P(5, 3).feature = 1

@@ -146,6 +146,7 @@ class EmpireSnapshot:
     era_countdown: int = 0
     age: str = ""  # normal | golden | heroic | dark
     luxuries: dict[str, int] = field(default_factory=dict)  # resource type -> copies held
+    luxury_cities: dict[str, int] = field(default_factory=dict)  # Resources.Happiness: cities each copy feeds
     # "tech" / "civic" -> {item, progress, cost, boosted, boost_pct, trigger}
     research: dict[str, dict[str, Any]] = field(default_factory=dict)
     governors: dict[str, Any] = field(default_factory=dict)  # can_appoint, can_promote, unassigned

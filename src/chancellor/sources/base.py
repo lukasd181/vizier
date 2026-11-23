@@ -53,6 +53,14 @@ class StateSource(Protocol):
 
     async def park_sites(self) -> list[dict[str, Any]]: ...
 
+    async def rules(self) -> dict[str, Any]:
+        """Rule tables from the loaded ruleset ({} if the source can't read them)."""
+        ...
+
+    async def settle_spots(self, limit: int) -> tuple[list[dict[str, Any]], int]:
+        """Best revealed legal city sites, and how many candidates were scored."""
+        ...
+
 
 @runtime_checkable
 class UIWriter(Protocol):

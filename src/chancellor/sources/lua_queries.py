@@ -1391,3 +1391,265 @@ def parse_production(lines: list[str]) -> list[dict]:
             except ValueError:
                 continue
     return out
+
+
+# ---------------------------------------------------------------------------
+# Settle spots
+# ---------------------------------------------------------------------------
+
+
+def build_settle_query(limit: int = 5, max_distance: int = 9) -> str:
+    """Score revealed, legal city sites near the empire.
+
+    Legality: Players[me]:GetCities():IsValidFoundLocation(x, y) when the
+    context offers it, else the 4-tile city spacing rule (GlobalParameters
+    CITY_MIN_RANGE = 3). Only revealed plots count, resources only if visible.
+    The game's own recommendations (GetGrandStrategicAI():
+    GetSettlementRecommendations, the settler icons in WorldViewIconsManager.lua)
+    are flagged.
+    """
+    return (
+        _LUA_PRELUDE
+        + f"""
+local LIMIT, MAXD = {limit}, {max_distance}
+local anchors = {{}}
+for _, c in pMe:GetCities():Members() do table.insert(anchors, {{x = c:GetX(), y = c:GetY()}}) end
+if #anchors == 0 then
+    for _, u in pMe:GetUnits():Members() do
+        local info = GameInfo.Units[u:GetType()]
+        if info and info.UnitType == "UNIT_SETTLER" and u:GetX() >= 0 then table.insert(anchors, {{x = u:GetX(), y = u:GetY()}}) end
+    end
+end
+if #anchors == 0 then print("ERR:NO_CITY_OR_SETTLER"); print("{SENTINEL}"); return end
+
+-- Every visible city (any owner) for spacing when IsValidFoundLocation isn't available
+local seenCities = {{}}
+for i = 0, 63 do
+    local p = Players[i]
+    if p and p:IsAlive() then
+        for _, c in p:GetCities():Members() do
+            if vis:IsRevealed(c:GetX(), c:GetY()) then table.insert(seenCities, {{x = c:GetX(), y = c:GetY()}}) end
+        end
+    end
+end
+local pCities = pMe:GetCities()
+local function legal(plot)
+    local ok, v = pcall(function() return pCities:IsValidFoundLocation(plot:GetX(), plot:GetY()) end)
+    if ok and v ~= nil then return v end
+    for _, c in ipairs(seenCities) do
+        if Map.GetPlotDistance(plot:GetX(), plot:GetY(), c.x, c.y) < 4 then return false end
+    end
+    return true
+end
+
+local recommended = {{}}
+pcall(function()
+    for _, r in pairs(pMe:GetGrandStrategicAI():GetSettlementRecommendations(5)) do
+        recommended[r.SettlingLocation] = true
+    end
+end)
+
+-- Luxury types we already have: held copies, plus any in our borders even if
+-- not improved yet (a second site with the same type adds no new amenity)
+local luxSeen = {{}}
+for row in GameInfo.Resources() do
+    if row.ResourceClassType == "RESOURCECLASS_LUXURY" then
+        local ok, n = pcall(function() return pRes:GetResourceAmount(row.Index) end)
+        if ok and n and n > 0 then luxSeen[row.ResourceType] = true end
+    end
+end
+for idx = 0, Map.GetPlotCount() - 1 do
+    local plot = Map.GetPlotByIndex(idx)
+    if plot:GetOwner() == me then
+        local ri = plot:GetResourceType()
+        local row = ri >= 0 and GameInfo.Resources[ri] or nil
+        if row and row.ResourceClassType == "RESOURCECLASS_LUXURY" and resVisible(row) then luxSeen[row.ResourceType] = true end
+    end
+end
+-- Campus adjacency per Adjacency_YieldChanges (verified with REA): mountain +1,
+-- reef +2, geothermal fissure +2, jungle +1 per 2
+local function featureType(q)
+    local fi = q:GetFeatureType()
+    return fi >= 0 and GameInfo.Features[fi] and GameInfo.Features[fi].FeatureType or ""
+end
+
+local candidates = {{}}
+for idx = 0, Map.GetPlotCount() - 1 do
+    local plot = Map.GetPlotByIndex(idx)
+    if vis:IsRevealed(idx) and not plot:IsWater() and not plot:IsMountain() and plot:GetOwner() < 0 then
+        local px, py = plot:GetX(), plot:GetY()
+        local near = 99
+        for _, a in ipairs(anchors) do near = math.min(near, Map.GetPlotDistance(px, py, a.x, a.y)) end
+        if near >= 3 and near <= MAXD and legal(plot) then
+            local food, prod, lux, luxNew, strat, mountains, foreign, unrevealed = 0, 0, 0, 0, 0, 0, 0, 0
+            local reefs, geo, jungle = 0, 0, 0
+            local luxNames = {{}}
+            for dy = -2, 2 do for dx = -2, 2 do
+                local q = Map.GetPlot(px + dx, py + dy)
+                if q then
+                    local d = Map.GetPlotDistance(px, py, q:GetX(), q:GetY())
+                    if d >= 1 and d <= 2 then
+                        if not vis:IsRevealed(q:GetIndex()) then
+                            unrevealed = unrevealed + 1
+                        else
+                            local w = (d == 1) and 2 or 1
+                            if not q:IsMountain() then
+                                food = food + w * q:GetYield(0)
+                                prod = prod + w * q:GetYield(1)
+                            end
+                            if d == 1 then
+                                if q:IsMountain() then mountains = mountains + 1 end
+                                local ft = featureType(q)
+                                if ft == "FEATURE_REEF" then reefs = reefs + 1
+                                elseif ft == "FEATURE_GEOTHERMAL_FISSURE" then geo = geo + 1
+                                elseif ft == "FEATURE_JUNGLE" then jungle = jungle + 1 end
+                            end
+                            if q:GetOwner() >= 0 and q:GetOwner() ~= me then foreign = foreign + 1 end
+                            local ri = q:GetResourceType()
+                            if ri >= 0 then
+                                local row = GameInfo.Resources[ri]
+                                if row and resVisible(row) then
+                                    if row.ResourceClassType == "RESOURCECLASS_LUXURY" then
+                                        lux = lux + 1
+                                        if not luxSeen[row.ResourceType] then luxNew = luxNew + 1 end
+                                        table.insert(luxNames, row.ResourceType)
+                                    elseif row.ResourceClassType == "RESOURCECLASS_STRATEGIC" then
+                                        strat = strat + 1
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end end
+            local fresh = plot:IsFreshWater()
+            local coast = plot:IsCoastalLand()
+            local hills = plot:IsHills()
+            local score = food + prod + (fresh and 12 or 0) + (coast and 4 or 0) + (hills and 4 or 0)
+                + 8 * luxNew + 3 * (lux - luxNew) + 3 * strat + 2 * math.min(mountains + 2 * reefs + 2 * geo + math.floor(jungle / 2), 5)
+                - 3 * foreign - 3 * math.max(0, near - 6) + (recommended[idx] and 5 or 0)
+            table.insert(candidates, {{x = px, y = py, score = score, food = food, prod = prod, fresh = fresh, coast = coast,
+                hills = hills, lux = table.concat(luxNames, ";"), luxNew = luxNew, strat = strat, mountains = mountains,
+                campus = mountains + 2 * reefs + 2 * geo + math.floor(jungle / 2), reefs = reefs,
+                foreign = foreign, near = near, rec = recommended[idx] and true or false, unrevealed = unrevealed}})
+        end
+    end
+end
+table.sort(candidates, function(a, b) return a.score > b.score end)
+-- Keep picks at least 4 tiles apart so the list offers real alternatives
+local picked = {{}}
+for _, c in ipairs(candidates) do
+    if #picked >= LIMIT then break end
+    local clash = false
+    for _, p in ipairs(picked) do
+        if Map.GetPlotDistance(c.x, c.y, p.x, p.y) < 4 then clash = true; break end
+    end
+    if not clash then table.insert(picked, c) end
+end
+for _, c in ipairs(picked) do
+    print("SETTLE|" .. c.x .. "|" .. c.y .. "|" .. c.score .. "|" .. c.food .. "|" .. c.prod .. "|" .. (c.fresh and 1 or 0)
+        .. "|" .. (c.coast and 1 or 0) .. "|" .. (c.hills and 1 or 0) .. "|" .. c.lux .. "|" .. c.luxNew .. "|" .. c.strat
+        .. "|" .. c.mountains .. "|" .. c.foreign .. "|" .. c.near .. "|" .. (c.rec and 1 or 0) .. "|" .. c.unrevealed
+        .. "|" .. c.campus .. "|" .. c.reefs)
+end
+print("SETTLECOUNT|" .. #candidates)
+print("{SENTINEL}")
+"""
+    )
+
+
+def parse_settle(lines: list[str]) -> tuple[list[dict], int]:
+    spots, total = [], 0
+    for line in lines:
+        if line.startswith("ERR:"):
+            raise ValueError("No city or settler to plan from yet." if "NO_CITY" in line else line)
+        p = line.split("|")
+        try:
+            if p[0] == "SETTLE" and len(p) >= 17:
+                spots.append(
+                    {
+                        "x": int(p[1]),
+                        "y": int(p[2]),
+                        "score": int(float(p[3])),
+                        "food": int(float(p[4])),
+                        "production": int(float(p[5])),
+                        "fresh_water": p[6] == "1",
+                        "coastal": p[7] == "1",
+                        "hills": p[8] == "1",
+                        "luxuries": [r for r in p[9].split(";") if r],
+                        "new_luxury_types": int(p[10]),
+                        "strategics": int(p[11]),
+                        "adjacent_mountains": int(p[12]),
+                        "foreign_tiles": int(p[13]),
+                        "distance": int(p[14]),
+                        "game_recommends": p[15] == "1",
+                        "unrevealed_nearby": int(p[16]),
+                        "campus_adjacency": int(p[17]) if len(p) > 17 else int(p[12]),
+                        "adjacent_reefs": int(p[18]) if len(p) > 18 else 0,
+                    }
+                )
+            elif p[0] == "SETTLECOUNT":
+                total = int(p[1])
+        except (ValueError, IndexError):
+            continue
+    return spots, total
+
+
+
+# ---------------------------------------------------------------------------
+# Rule tables from the running game (replaces hard-coded gamedata when live)
+# ---------------------------------------------------------------------------
+
+
+def build_rules_query() -> str:
+    """Entertainment/housing per building and district, and how many cities each
+    luxury feeds (Resources.Happiness), straight from GameInfo — so the numbers
+    match the ruleset this game loaded. REA showed rulesets differ (e.g. Palace
+    amenities 1 vs 2 between two cached databases)."""
+    return f"""
+for row in GameInfo.Buildings() do
+    local e, h, r = row.Entertainment or 0, row.Housing or 0, row.RegionalRange or 0
+    if e ~= 0 or h ~= 0 then print("RB|" .. row.BuildingType .. "|" .. e .. "|" .. h .. "|" .. r) end
+end
+for row in GameInfo.Districts() do
+    local e, h = row.Entertainment or 0, row.Housing or 0
+    if e ~= 0 or h ~= 0 then print("RD|" .. row.DistrictType .. "|" .. e .. "|" .. h) end
+end
+for row in GameInfo.Resources() do
+    if row.ResourceClassType == "RESOURCECLASS_LUXURY" then print("RL|" .. row.ResourceType .. "|" .. (row.Happiness or 0)) end
+end
+print("{SENTINEL}")
+"""
+
+
+def parse_rules(lines: list[str]) -> dict:
+    out: dict = {
+        "entertainment_buildings": {},
+        "regional_entertainment": set(),
+        "housing_buildings": {},
+        "entertainment_districts": {},
+        "housing_districts": {},
+        "luxury_cities": {},
+    }
+    for line in lines:
+        p = line.split("|")
+        try:
+            if p[0] == "RB" and len(p) >= 5:
+                e, h, r = int(float(p[2])), int(float(p[3])), int(float(p[4]))
+                if e:
+                    out["entertainment_buildings"][p[1]] = e
+                    if r:
+                        out["regional_entertainment"].add(p[1])
+                if h:
+                    out["housing_buildings"][p[1]] = h
+            elif p[0] == "RD" and len(p) >= 4:
+                e, h = int(float(p[2])), int(float(p[3]))
+                if e:
+                    out["entertainment_districts"][p[1]] = e
+                if h:
+                    out["housing_districts"][p[1]] = h
+            elif p[0] == "RL" and len(p) >= 3:
+                out["luxury_cities"][p[1]] = int(float(p[2]))
+        except ValueError:
+            continue
+    return out

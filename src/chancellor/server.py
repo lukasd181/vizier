@@ -310,6 +310,36 @@ async def clear_highlights(ctx: Context) -> str:
     return await _run(ctx, go)
 
 
+@mcp.tool()
+async def rank_settle_spots(ctx: Context, top: int = 3, pin: bool = False) -> str:
+    """Where should the next city go? Ranks revealed, legal sites near your empire.
+
+    Legality comes from the game (IsValidFoundLocation); scores weigh nearby
+    food and production, fresh water, coast, luxuries (new types count more),
+    hills and adjacent mountains (Campus adjacency). Sites the game's own
+    settler advisor recommends are flagged. Only tiles you've revealed count.
+
+    Args:
+        top: how many sites (1-10); each is at least 4 tiles from the others
+        pin: drop map tacks with the settler icon on the sites (saved in the
+            game file; clear_highlights removes them)
+    """
+
+    async def go(m: Mentor) -> str:
+        spots, total = await m.settle_spots(top)
+        text = nr.settle_spots(spots, total)
+        if pin and spots:
+            tiles = [(s["x"], s["y"]) for s in spots]
+            await m.highlight(tiles, "green", "", False, True)  # highlight + camera on #1
+            if m.writer is not None:
+                for i, (x, y) in enumerate(tiles, 1):
+                    await m.writer.add_pin(x, y, f"City site #{i}", "settler")
+            text += f"\nPinned {len(tiles)} site(s) with the settler icon and moved the camera to #1."
+        return text
+
+    return await _run(ctx, go)
+
+
 @mcp.tool(annotations={"readOnlyHint": True})
 async def find_park_sites(ctx: Context) -> str:
     """Tiles where a Naturalist could start a National Park now.

@@ -201,3 +201,40 @@ def test_production_query_parses():
     assert by["BUILDING_MONUMENT"] == {"category": "BUILDING", "item_name": "BUILDING_MONUMENT", "cost": 80, "turns": 8,
                                        "gold_cost": 240, "is_repair": False}
     assert by["DISTRICT_COMMERCIAL_HUB"]["gold_cost"] == -1
+
+
+def test_settle_query_ranks_legal_revealed_sites():
+    lines = execute(q.build_settle_query(limit=3))
+    assert find_leaks("\n".join(lines), HIDDEN_MARKERS) == []
+    spots, total = q.parse_settle(lines)
+    assert total > 0 and spots
+    best = spots[0]
+    # (4,2): fresh water, hills, a mountain next to it, and the game's advisor's pick
+    assert (best["x"], best["y"]) == (4, 2)
+    assert best["fresh_water"] and best["hills"] and best["adjacent_mountains"] == 1 and best["game_recommends"]
+    for s in spots:
+        assert s["distance"] >= 4  # IsValidFoundLocation in the fake: 4+ from the capital
+        assert not (s["x"] >= 4 and s["y"] >= 4)  # never an unrevealed plot
+    for a in spots:
+        for b in spots:
+            if a is not b:
+                assert max(abs(a["x"] - b["x"]), abs(a["y"] - b["y"])) >= 4
+
+
+def test_rules_query_reads_live_tables():
+    rules = q.parse_rules(execute(q.build_rules_query()))
+    assert rules["entertainment_buildings"] == {"BUILDING_ARENA": 2, "BUILDING_PALACE": 2}
+    assert rules["housing_buildings"] == {"BUILDING_PALACE": 1}
+    assert rules["luxury_cities"]["RESOURCE_SILK"] == 4
+
+
+def test_settle_counts_reef_and_owned_luxuries():
+    spots, _ = q.parse_settle(execute(q.build_settle_query(limit=3)))
+    best = spots[0]
+    assert (best["x"], best["y"]) == (4, 2)
+    # mountain (+1) + reef (+2) next to it
+    assert best["adjacent_reefs"] == 1 and best["campus_adjacency"] == 3
+    # Silk is already in our borders, so it never counts as a new luxury type
+    for s in spots:
+        if "RESOURCE_SILK" in s["luxuries"]:
+            assert s["new_luxury_types"] == 0

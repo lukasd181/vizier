@@ -24,6 +24,16 @@ class TunerSource:
 
     def __init__(self, host: str = "127.0.0.1", port: int = 4318):
         self.conn = GameConnection(host, port)  # refuses non-localhost hosts
+        self._rules: dict[str, Any] | None = None
+        self._rules_for: tuple[str, int] | None = None
+
+    async def rules(self) -> dict[str, Any]:
+        """Read once per game: the ruleset can't change mid-game."""
+        ident = await self.game_identity()
+        if self._rules is None or ident != self._rules_for:
+            self._rules = mq.parse_rules(await self._write(mq.build_rules_query(), timeout=10.0))
+            self._rules_for = ident
+        return self._rules
 
     async def game_identity(self) -> tuple[str, int]:
         return mq.parse_identity(await self._write(mq.build_identity_query()))
@@ -106,6 +116,7 @@ class TunerSource:
             "governors": state["governors"],
             "has_pantheon": state["has_pantheon"],
             "unplaced_districts": state["unplaced_districts"],
+            "luxury_cities": (await self.rules()).get("luxury_cities", {}),
             "slotted_policies": {sl["current_policy"] for sl in pol["slots"] if sl["current_policy"]},
             "available_policies": {a["policy_type"] for a in pol["available"]},
         }
@@ -131,6 +142,9 @@ class TunerSource:
 
     async def policies(self) -> dict[str, Any]:
         return mq.parse_policies(await self._write(mq.build_policies_query()))
+
+    async def settle_spots(self, limit: int) -> tuple[list[dict[str, Any]], int]:
+        return mq.parse_settle(await self._write(mq.build_settle_query(limit), timeout=20.0))
 
     async def park_sites(self) -> list[dict[str, Any]]:
         return mq.parse_park_sites(await self._write(mq.build_park_sites_query(), timeout=10.0))

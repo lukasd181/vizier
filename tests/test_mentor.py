@@ -176,3 +176,16 @@ def test_goal_pace_round_trips_and_migrates(tmp_path):
     st.set_goal("g", Goal("science", pace="pro"))
     assert st.get_goal("g").pace == "pro"
     st.close()
+
+
+
+def test_turn_review_shows_cities_and_units(mentor):
+    from chancellor import narrate as nr
+    rv, snap, goal = run(mentor.turn_review())
+    text = nr.turn_review(rv, snap, goal)
+    assert "Kyoto (pop 7, capital): building Library, 4 turn(s)" in text
+    assert "Nagoya (pop 6): building NOTHING" in text and "loyalty 40 (-5.0)" in text
+    # civilians in danger are listed first
+    units = text.split("Units:")[1].strip().splitlines()
+    assert units[0].startswith("Builder at (12,12)") and "Barbarian Horseman 2 tile(s) away!" in units[0]
+    assert "Warrior at (10,10)" in text

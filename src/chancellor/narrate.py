@@ -24,6 +24,8 @@ def turn_review(rv: Review, snap: EmpireSnapshot, goal: Goal | None, coach: bool
         _era_line(snap),
         *_research_lines(snap),
         f"Goal: {goal.victory} ({goal.help_level}, {goal.pace} pace)" if goal else "Goal: not set (set_goal to tailor advice)",
+        *_city_lines(snap),
+        *_unit_lines(snap),
         "",
     ]
     if goal and goal.help_level == "off":
@@ -54,6 +56,52 @@ def turn_review(rv: Review, snap: EmpireSnapshot, goal: Goal | None, coach: bool
         lines.append("")
         lines.append("Rule errors (please report): " + "; ".join(rv.errors))
     return "\n".join(lines)
+
+
+def _name(t: str) -> str:
+    for pre in ("UNIT_", "BUILDING_", "DISTRICT_", "PROJECT_"):
+        if t.startswith(pre):
+            t = t[len(pre):]
+    return t.replace("_", " ").title()
+
+
+def _city_lines(snap: EmpireSnapshot) -> list[str]:
+    if not snap.cities:
+        return []
+    out = ["Cities:"]
+    for c in snap.cities:
+        if c.queue_empty:
+            building = "building NOTHING"
+        else:
+            turns = f", {c.production_turns_left} turn(s)" if c.production_turns_left else ""
+            building = f"building {_name(c.currently_building)}{turns}"
+        loyalty = f" · loyalty {c.loyalty:.0f} ({c.loyalty_per_turn:+.1f})" if c.loyalty_per_turn < 0 else ""
+        out.append(
+            f"  {c.name} (pop {c.population}{', capital' if c.is_capital else ''}): {building} · "
+            f"{c.production:.0f} production · amenities {c.net_amenities:+d} · "
+            f"housing {c.housing:.0f} for {c.population} pop{loyalty}"
+        )
+    return out
+
+
+def _unit_lines(snap: EmpireSnapshot, limit: int = 10) -> list[str]:
+    if not snap.units:
+        return []
+    # Civilians in danger first, then civilians, then the rest.
+    units = sorted(snap.units, key=lambda u: (u.threat_distance is None, not u.is_civilian, u.unit_type))
+    out = ["Units:"]
+    for u in units[:limit]:
+        moves = f"{u.moves_remaining:g} move(s) left" if u.moves_remaining else "no moves left"
+        hp = f" · {u.health} HP" if u.health < 100 else ""
+        threat = " ".join(_name(w) if w.startswith("UNIT_") else w for w in u.threat_desc.split())
+        danger = f" · {threat} {u.threat_distance} tile(s) away!" if u.threat_distance is not None else ""
+        out.append(f"  {_name(u.unit_type)} at ({u.x},{u.y}) · {moves}{hp}{danger}")
+    if len(units) > limit:
+        rest: dict[str, int] = {}
+        for u in units[limit:]:
+            rest[_name(u.unit_type)] = rest.get(_name(u.unit_type), 0) + 1
+        out.append("  …and " + ", ".join(f"{n} {k}" for k, n in rest.items()))
+    return out
 
 
 def _research_lines(snap: EmpireSnapshot) -> list[str]:

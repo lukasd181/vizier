@@ -3,8 +3,8 @@
 import pytest
 from conftest import run
 
-from chancellor.mentor import CityNotFound
-from chancellor.models import Goal
+from vizier.mentor import CityNotFound
+from vizier.models import Goal
 
 
 def test_turn_review_top_three_and_ranking(mentor):
@@ -164,7 +164,7 @@ def test_rivals_turns_to_win_from_history(mentor):
 
 def test_goal_pace_round_trips_and_migrates(tmp_path):
     import sqlite3
-    from chancellor.store import Store
+    from vizier.store import Store
     db = tmp_path / "old.sqlite3"
     con = sqlite3.connect(db)  # a database from before the pace column existed
     con.execute("CREATE TABLE goals (game_key TEXT PRIMARY KEY, victory TEXT NOT NULL, style TEXT NOT NULL DEFAULT '', "
@@ -180,7 +180,7 @@ def test_goal_pace_round_trips_and_migrates(tmp_path):
 
 
 def test_turn_review_shows_cities_and_units(mentor):
-    from chancellor import narrate as nr
+    from vizier import narrate as nr
     rv, snap, goal = run(mentor.turn_review())
     text = nr.turn_review(rv, snap, goal)
     assert "Kyoto (pop 7, capital): building Library, 4 turn(s)" in text
@@ -189,3 +189,17 @@ def test_turn_review_shows_cities_and_units(mentor):
     units = text.split("Units:")[1].strip().splitlines()
     assert units[0].startswith("Builder at (12,12)") and "Barbarian Horseman 2 tile(s) away!" in units[0]
     assert "Warrior at (10,10)" in text
+
+
+def test_legacy_chancellor_database_is_carried_over(tmp_path, monkeypatch):
+    from vizier.store import Store, default_db_path
+    from pathlib import Path
+
+    monkeypatch.delenv("VIZIER_DB", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))  # works on Windows too
+    old = Store(tmp_path / ".chancellor" / "chancellor.sqlite3")
+    old.set_goal("g", Goal("science"))
+    old.close()
+    path = default_db_path()
+    assert path == tmp_path / ".vizier" / "vizier.sqlite3" and path.exists()
+    assert Store(path).get_goal("g").victory == "science"

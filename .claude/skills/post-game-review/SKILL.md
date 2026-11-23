@@ -12,8 +12,8 @@ turn reviews recorded during the game, so it's thin if few were run.
 
 ## Getting the data
 
-Prefer `mcp__chancellor__get_game_review`. Otherwise, from the repository root:
+Prefer `mcp__vizier__get_game_review`. Otherwise, from the repository root:
 
 ```bash
-.venv/bin/python -m chancellor.cli get_game_review 2>/dev/null
+.venv/bin/python -m vizier.cli get_game_review 2>/dev/null
 ```

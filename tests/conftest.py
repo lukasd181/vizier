@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from chancellor.fog import FogFilter
-from chancellor.mentor import Mentor
-from chancellor.sources.fixture import FixtureSource
-from chancellor.store import Store
+from vizier.fog import FogFilter
+from vizier.mentor import Mentor
+from vizier.sources.fixture import FixtureSource
+from vizier.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 MIDGAME = FIXTURES / "midgame.json"

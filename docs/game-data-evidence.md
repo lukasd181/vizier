@@ -4,7 +4,7 @@ The mentor reasons with game rules (amenity thresholds, which buildings give
 amenities, which policy cards cost loyalty…). None of those numbers are taken
 from wikis or memory. They were read from the shipped game with
 [REA](https://github.com/morluto/rea), and each one is cited in
-`src/chancellor/gamedata.py` by its evidence ID.
+`src/vizier/gamedata.py` by its evidence ID.
 
 ## Source artifact
 

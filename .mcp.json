@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "chancellor": {
+    "vizier": {
       "command": ".venv/bin/python",
-      "args": ["-m", "chancellor"]
+      "args": ["-m", "vizier"]
     }
   }
 }

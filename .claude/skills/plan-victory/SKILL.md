@@ -13,15 +13,15 @@ spoil surprises: no full-game plans.
 
 ## Getting the data
 
-Prefer the MCP tools `mcp__chancellor__get_goal_status`, `mcp__chancellor__get_rivals`,
-`mcp__chancellor__set_goal`, `mcp__chancellor__add_commitment`. Otherwise use the CLI
+Prefer the MCP tools `mcp__vizier__get_goal_status`, `mcp__vizier__get_rivals`,
+`mcp__vizier__set_goal`, `mcp__vizier__add_commitment`. Otherwise use the CLI
 from the repository root:
 
 ```bash
-.venv/bin/python -m chancellor.cli get_goal_status 2>/dev/null
-.venv/bin/python -m chancellor.cli get_rivals 2>/dev/null
-.venv/bin/python -m chancellor.cli set_goal '{"victory": "science", "help_level": "advisor"}' 2>/dev/null
-.venv/bin/python -m chancellor.cli add_commitment '{"text": "Third city", "due_turn": 60, "check": "city_count:3"}' 2>/dev/null
+.venv/bin/python -m vizier.cli get_goal_status 2>/dev/null
+.venv/bin/python -m vizier.cli get_rivals 2>/dev/null
+.venv/bin/python -m vizier.cli set_goal '{"victory": "science", "help_level": "advisor"}' 2>/dev/null
+.venv/bin/python -m vizier.cli add_commitment '{"text": "Third city", "due_turn": 60, "check": "city_count:3"}' 2>/dev/null
 ```
 
 If the output says "Can't reach the game", explain the setup (Civ 6 running,

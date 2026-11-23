@@ -34,7 +34,7 @@ Tea, and finish Writing, since its eureka is mostly spent anyway."*
 | | |
 |---|---|
 | **19** MCP tools · **4** prompts · **4** Claude Code skills | **28** deterministic rules, ranked and capped at 3 per turn |
-| **102** tests, including the real Lua run against a fake Civ 6 engine | **0** runtime dependencies besides the `mcp` SDK |
+| **117** tests on macOS, Windows and Linux in CI, including the real Lua run against a fake Civ 6 engine | **0** runtime dependencies besides the `mcp` SDK |
 | Game rules **verified by reverse-engineering** the shipped game database | **Verified live** against a running game on macOS |
 
 ---
@@ -49,10 +49,13 @@ Tea, and finish Writing, since its eureka is mostly spent anyway."*
 - [Guardrails](#guardrails)
 - [Engineering highlights](#engineering-highlights)
 - [Quick start](#quick-start)
+- [Troubleshooting](#troubleshooting)
+- [Privacy](#privacy)
 - [Project layout](#project-layout)
 - [Testing](#testing)
 - [Limitations and roadmap](#limitations-and-roadmap)
 - [References and credits](#references-and-credits)
+- [License](#license)
 
 ---
 
@@ -156,7 +159,7 @@ flowchart LR
     end
 
     T <-- "TCP 127.0.0.1:4318<br/>Lua over FireTuner" --> CIV[[Civilization VI<br/>InGame Lua context]]
-    CIV -. "ExposedMembers" .-> MOD[ChancellorAlerts mod<br/>in-game panel]
+    CIV -. "ExposedMembers" .-> MOD[VizierAlerts mod<br/>in-game panel]
 ```
 
 ### One turn review, end to end
@@ -194,7 +197,7 @@ sequenceDiagram
 | **Safety** | `fog.py` | The single visibility filter between game data and every tool |
 | **Memory** | `store.py` | Goals, commitments, alert history, dismissals, turn summaries, remembered camps |
 | **Game access** | `sources/`, `tuner.py` | `StateSource` interface; live tuner source plus a JSON fixture source; FireTuner client |
-| **In-game UI** | `mod/ChancellorAlerts/` | Optional Civ 6 mod that shows the top 3 alerts without alt-tabbing |
+| **In-game UI** | `mod/VizierAlerts/` | Optional Civ 6 mod that shows the top 3 alerts without alt-tabbing |
 
 ---
 
@@ -252,7 +255,7 @@ then:
   rankings.
 
 ### 5. Memory
-A small SQLite database (`~/.chancellor/chancellor.sqlite3`), keyed by civ and
+A small SQLite database (`~/.vizier/vizier.sqlite3`), keyed by civ and
 map seed so games never mix, stores turn summaries (for trends and
 turns-to-win), alert history (for `explain_alert` and the post-game review),
 commitments, goals and barbarian camps seen earlier (fog memory).
@@ -315,7 +318,7 @@ Rule constants (happiness thresholds, loyalty levels, victory thresholds,
 amenity and housing values, policy amounts, adjacency bonuses, luxury reach)
 were read from Civ 6's compiled gameplay database with
 [REA](https://github.com/morluto/rea), a reverse-engineering toolkit. Each is
-cited by evidence ID in `src/chancellor/gamedata.py` and
+cited by evidence ID in `src/vizier/gamedata.py` and
 [`docs/game-data-evidence.md`](docs/game-data-evidence.md). This process also
 found a bug in civ6-mcp (amenities reported as needed + have) and the rule-set
 differences that led to live rule tables.
@@ -332,7 +335,7 @@ differences that led to live rule tables.
 | **Options, not orders** | Server instructions and prompts ask for 2–3 options with trade-offs |
 | **Respects your goal** | Advice follows your declared victory and style, even a roleplay game |
 | **Stays local** | The tuner client refuses any non-localhost host |
-| **Single player** | Designed for single player; never for live advice in multiplayer |
+| **Single player only** | Every query first checks the game mode (`IsAnyMultiplayer`, `IsHotseat`, network, PlayByCloud). In a multiplayer game Vizier reads and changes nothing and explains why |
 
 ---
 
@@ -366,66 +369,124 @@ differences that led to live rule tables.
 
 ## Quick start
 
-**You need:** Civilization VI (tested on macOS with Gathering Storm), Python
+**You need:** Civilization VI (verified on macOS with Gathering Storm), Python
 3.12+, and Claude Code or Claude Desktop.
+
+### 1. Install
+
+```bash
+pip install civ6-vizier        # or: pipx install civ6-vizier · uvx --from civ6-vizier vizier
+```
+
+The PyPI name is `civ6-vizier` because `vizier` is taken; the commands are
+`vizier` and `vizier-mcp`. From source instead:
 
 ```bash
 git clone git@github.com:lukasd181/the-chancellor.git
-cd the-chancellor
-python3.12 -m venv .venv
-.venv/bin/pip install -e .
+cd the-chancellor              # the repo keeps its old name; the app is Vizier
+python3.12 -m venv .venv && .venv/bin/pip install -e .
 ```
 
-**1. Turn on the tuner.** In
-`~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/AppOptions.txt`
-set `EnableTuner 1`, then start Civ 6 and load a single-player game.
-Achievements are disabled while the tuner is on.
-
-**2. Connect a client.**
-
-- **Claude Code:** open the repo folder. `.mcp.json` registers the
-  `chancellor` server; approve it, then use `/turn-check`, `/plan-victory`,
-  `/war-check`, `/post-game-review`, or just ask.
-- **Claude Desktop:** add this to
-  `~/Library/Application Support/Claude/claude_desktop_config.json` and
-  restart the app (Cmd+Q). The prompts appear under **+** → **chancellor**.
-
-  ```json
-  "mcpServers": {
-    "chancellor": { "command": "/absolute/path/to/the-chancellor/.venv/bin/python", "args": ["-m", "chancellor"] }
-  }
-  ```
-- **Shell:** `.venv/bin/python -m chancellor.cli get_turn_review`
-  (`--list` for every tool).
-
-**No game handy?** Try the recorded mid-game:
+### 2. Set up
 
 ```bash
-.venv/bin/python -m chancellor.cli --fixture tests/fixtures/midgame.json get_turn_review
+vizier setup --claude-desktop   # asks before each change; backs up anything it edits
 ```
 
-**Optional in-game panel:** copy `mod/ChancellorAlerts` into
-`~/Library/Application Support/Sid Meier's Civilization VI/Mods/` and enable
-*Vizier Alerts* under Additional Content.
+`setup` does three things:
+- turns on the game's debug port (`EnableTuner 1`, which disables achievements);
+- installs the optional in-game alert panel mod;
+- registers Vizier in Claude Desktop, and prints the one-line command for
+  Claude Code.
 
-> The game accepts **one** tuner connection. Use Vizier from one app at a
-> time, and close FireTuner or other tuner clients.
+Then restart Civ 6 and load a **single-player** game.
+
+### 3. Check
+
+```bash
+vizier doctor     # read-only: Python, tuner setting, mod, game connection, port exposure, Claude config
+```
+
+### 4. Play
+
+- **Claude Code:** open the repo folder (`.mcp.json` registers `vizier`), or run
+  `claude mcp add vizier -- <python> -m vizier`. Use `/turn-check`,
+  `/plan-victory`, `/war-check`, `/post-game-review`, or just ask.
+- **Claude Desktop:** quit and reopen it. The prompts are under **+** →
+  **vizier**.
+- **Shell:** `vizier get_turn_review` (`vizier --list` for every tool).
+
+**No game handy?** `vizier --fixture tests/fixtures/midgame.json get_turn_review`
+runs against a recorded mid-game (from a source checkout).
+
+### Where Civ 6 keeps its files
+
+`setup` and `doctor` find these automatically. Override them with
+`VIZIER_APPOPTIONS` and `VIZIER_MODS_DIR` if yours differ.
+
+| | `AppOptions.txt` (tuner setting) | Mods folder | Claude Desktop config |
+|---|---|---|---|
+| **macOS** (verified) | `~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/` | `~/Library/Application Support/Sid Meier's Civilization VI/Sid Meier's Civilization VI/Mods/` | `~/Library/Application Support/Claude/` |
+| **Windows** | `%LOCALAPPDATA%\Firaxis Games\Sid Meier's Civilization VI\` | `Documents\My Games\Sid Meier's Civilization VI\Mods\` | `%APPDATA%\Claude\` |
+| **Linux** | `~/.local/share/aspyr-media/Sid Meier's Civilization VI/` | `~/.local/share/aspyr-media/Sid Meier's Civilization VI/Mods/` | `~/.config/Claude/` |
+
+**Windows:** the tuner is part of the free *Sid Meier's Civilization VI SDK*
+(Steam → Library → Tools), and the game's Options menu has a "Tuner (disables
+achievements)" switch. Close the SDK's FireTuner app before using Vizier.
 
 | Environment variable | Purpose |
 |---|---|
-| `CHANCELLOR_FIXTURE` | Serve a recorded JSON snapshot instead of a live game |
-| `CHANCELLOR_DB` | SQLite location (default `~/.chancellor/chancellor.sqlite3`) |
+| `VIZIER_FIXTURE` | Serve a recorded JSON snapshot instead of a live game |
+| `VIZIER_DB` | SQLite location (default `~/.vizier/vizier.sqlite3`) |
+| `VIZIER_APPOPTIONS`, `VIZIER_MODS_DIR` | Override where `setup` and `doctor` look |
 | `CIV_MCP_PORT` | Tuner port (default 4318; the host is always localhost) |
-| `CHANCELLOR_DEBUG_FULL_VISION` | Developer-only: disable fog filtering (every output is stamped) |
+| `VIZIER_DEBUG_FULL_VISION` | Developer-only: disable fog filtering (every output is stamped) |
+
+---
+
+## Troubleshooting
+
+Run `vizier doctor` first; it names most problems and their fix.
+
+| Symptom | Cause and fix |
+|---|---|
+| "Can't reach the game" | Civ 6 isn't running, no game is loaded (the main menu doesn't count), or `EnableTuner` is 0. Run `vizier setup`, restart Civ 6, load a game |
+| It connects, then hangs or times out | The tuner allows **one** connection. Close FireTuner, other Claude sessions using Vizier, or civ6-mcp. If it still hangs, restart Civ 6; the tuner can lock up after a bad connection |
+| "Vizier is single-player only" | A multiplayer, hotseat or PlayByCloud game is loaded. This is deliberate; load a single-player game |
+| Tools don't appear in Claude Code | Start a new session in the repo folder and approve the `vizier` server (`/mcp` shows its status) |
+| Tools don't appear in Claude Desktop | Quit fully (Cmd+Q on Mac) and reopen. Check Settings → Developer, and the log `mcp-server-vizier.log` |
+| A map highlight disappears | Selecting a unit or opening a lens reuses the same layer. Ask to highlight again; map tacks stay until cleared |
+| Numbers look odd for a modded game | Vizier reads rule tables from the running game, so mods are respected. Check `vizier doctor`, then open an issue with its output |
+
+---
+
+## Privacy
+
+- **Everything runs on your computer.** Claude Code or Claude Desktop starts
+  Vizier as a local process, and Vizier talks to Civ 6 over `127.0.0.1` only.
+  It never opens a network port.
+- **No telemetry.** Vizier sends nothing anywhere: no analytics, no crash
+  reports, no cloud logging.
+- **What Claude sees:** only the text results of the tools you use (e.g. the
+  turn review), already fog-filtered. They travel to Anthropic as part of your
+  chat, like anything you type. Raw game memory and the full map never leave
+  your machine.
+- **What's stored:** goals, plans, alert history and turn summaries, in
+  `~/.vizier/vizier.sqlite3`. Delete it any time.
+- **Your game files:** `setup` edits `AppOptions.txt` and the Claude Desktop
+  config only after asking, and backs up both first. `doctor` never changes
+  anything.
 
 ---
 
 ## Project layout
 
 ```text
-src/chancellor/
+src/vizier/
 ├── server.py          MCP tools and prompts (FastMCP)
-├── cli.py             call any tool from the shell
+├── cli.py             the `vizier` command: setup, doctor, any tool
+├── admin.py           `vizier setup` and `vizier doctor`
+├── paths.py           where Civ 6 and Claude keep files (macOS, Windows, Linux)
 ├── mentor.py          orchestration: source → fog → store → rules
 ├── fog.py             the visibility filter
 ├── rules/             28 rules: victory, empire, expansion, era, tempo,
@@ -443,10 +504,11 @@ src/chancellor/
     ├── tuner.py       live game source
     ├── fixture.py     recorded JSON source (tests, demos, replays)
     └── lua_queries.py every Lua query Vizier sends to the game
-mod/ChancellorAlerts/  optional in-game alert panel (Lua + XML)
+mod/VizierAlerts/      optional in-game alert panel (Lua + XML)
 .claude/skills/        turn-check, plan-victory, war-check, post-game-review
 docs/game-data-evidence.md   REA evidence for every game constant
-tests/                 102 tests (see below)
+tests/                 117 tests (see below)
+.github/workflows/     CI: tests on 3 OSes × 2 Python versions; package build check
 ```
 
 ---
@@ -466,6 +528,12 @@ tests/                 102 tests (see below)
 | `test_tuner.py` | The FireTuner client against a fake server speaking the real wire format |
 | `test_server.py` | Every tool over the MCP protocol, with leak scanning and bad-input handling |
 | `test_mentor.py`, `test_options.py` | End-to-end flows on a recorded mid-game: commitments, camps, fix-it options |
+| `test_admin.py` | `setup` and `doctor` against temporary files: consent, backups, other config left intact, paths per OS |
+| Multiplayer guard (in `test_lua_queries.py`, `test_tuner.py`) | Online, hotseat and PlayByCloud games are refused before anything is read |
+
+CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the
+suite on macOS, Windows and Linux with Python 3.12 and 3.13, then builds the
+package, checks its metadata and smoke-tests the wheel in a clean environment.
 
 Only a live game proves the engine accepts every call. Each feature was also
 run against a real game; the commit messages note what was verified live.
@@ -478,8 +546,8 @@ run against a real game; the commit messages note what was verified live.
 - Needs the FireTuner debug port, which disables achievements. A logs-and-saves
   source for players who keep achievements fits the `StateSource` interface but
   isn't built.
-- Tested on macOS. Windows and Linux should work (same protocol) but are
-  unverified.
+- Verified live on macOS only. Windows and Linux paths and the protocol are
+  covered by CI, but not yet tested against a real game.
 - Some gains are labelled estimates where the game data doesn't carry them
   (e.g. the governor's base loyalty).
 - Tile output doesn't report rivers yet.
@@ -512,6 +580,15 @@ run against a real game; the commit messages note what was verified live.
 - **REA:** [github.com/morluto/rea](https://github.com/morluto/rea), used to
   verify game rules from the shipped database.
 - **Model Context Protocol:** [modelcontextprotocol.io](https://modelcontextprotocol.io).
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Lucas Duong. Includes MIT-licensed code adapted from
+civ6-mcp; see [NOTICE](NOTICE).
 
 *Civilization VI is a trademark of Take-Two Interactive / Firaxis Games. Vizier
 is an unofficial fan project and isn't affiliated with or endorsed by them.*

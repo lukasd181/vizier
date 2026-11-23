@@ -6,7 +6,7 @@ import struct
 import pytest
 from conftest import run
 
-from chancellor.tuner import SENTINEL, GameConnection, LuaError
+from vizier.tuner import SENTINEL, GameConnection, LuaError
 
 
 def frame(tag: int, payload: str) -> bytes:
@@ -107,3 +107,56 @@ def test_no_game_running():
 def test_refuses_remote_host():
     with pytest.raises(ValueError, match="localhost"):
         GameConnection("192.168.1.20")
+
+
+def test_tuner_source_refuses_multiplayer():
+    from vizier.sources.base import MultiplayerGame
+    from vizier.sources.tuner import TunerSource
+
+    class StubConn:
+        sent: list[str] = []
+
+        async def execute_write(self, lua, timeout=5.0):
+            self.sent.append(lua)
+            return ["ERR:MULTIPLAYER"]
+
+    src = TunerSource()
+    src.conn = StubConn()
+    with pytest.raises(MultiplayerGame):
+        run(src.game_identity())
+    assert src.conn.sent[0].startswith("local __vz_mp")  # guard runs first, on every query
+
+
+def test_server_explains_multiplayer_refusal(tmp_path, monkeypatch):
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    from vizier import server
+    from vizier.sources.base import MultiplayerGame
+
+    monkeypatch.setenv("VIZIER_DB", str(tmp_path / "db.sqlite3"))
+
+    class MPSource:
+        name = "tuner"
+
+        async def game_identity(self):
+            raise MultiplayerGame("multiplayer game loaded")
+
+    from contextlib import asynccontextmanager
+    from vizier.mentor import Mentor
+    from vizier.store import Store
+
+    @asynccontextmanager
+    async def lifespan(_):
+        store = Store(tmp_path / "x.sqlite3")
+        yield Mentor(MPSource(), store)
+        store.close()
+
+    monkeypatch.setattr(server.mcp._mcp_server, "lifespan", lambda app: lifespan(app))  # restored after
+
+    async def go():
+        async with create_connected_server_and_client_session(server.mcp._mcp_server) as client:
+            res = await client.call_tool("get_turn_review", {})
+            return res.content[0].text
+
+    text = run(go())
+    assert "single-player only" in text and "hasn't read or changed anything" in text

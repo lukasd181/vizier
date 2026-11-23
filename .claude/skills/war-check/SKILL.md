@@ -11,14 +11,14 @@ attack — with the risks of each. Use only visible information.
 
 ## Getting the data
 
-Prefer `mcp__chancellor__get_rivals`, `mcp__chancellor__get_turn_review` and
-`mcp__chancellor__get_tiles` (scope "area" around a border city). Otherwise use
+Prefer `mcp__vizier__get_rivals`, `mcp__vizier__get_turn_review` and
+`mcp__vizier__get_tiles` (scope "area" around a border city). Otherwise use
 the CLI from the repository root:
 
 ```bash
-.venv/bin/python -m chancellor.cli get_rivals 2>/dev/null
-.venv/bin/python -m chancellor.cli get_turn_review '{"push_to_game": false}' 2>/dev/null
-.venv/bin/python -m chancellor.cli get_tiles '{"scope": "area", "x": 10, "y": 10, "radius": 4}' 2>/dev/null
+.venv/bin/python -m vizier.cli get_rivals 2>/dev/null
+.venv/bin/python -m vizier.cli get_turn_review '{"push_to_game": false}' 2>/dev/null
+.venv/bin/python -m vizier.cli get_tiles '{"scope": "area", "x": 10, "y": 10, "radius": 4}' 2>/dev/null
 ```
 
 If the output says "Can't reach the game", explain the setup and offer the demo

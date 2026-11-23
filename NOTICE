@@ -1,8 +1,8 @@
-the-chancellor (Vizier) includes code adapted from civ6-mcp:
+Vizier includes code adapted from civ6-mcp:
   https://github.com/lmwilki/civ6-mcp
-  - src/chancellor/tuner.py: FireTuner wire protocol and connection handling
+  - src/vizier/tuner.py: FireTuner wire protocol and connection handling
     (from src/civ_mcp/tuner_client.py and connection.py)
-  - src/chancellor/sources/lua_queries.py: the identity, empire overview,
+  - src/vizier/sources/lua_queries.py: the identity, empire overview,
     policies and production queries (from src/civ_mcp/lua/*.py)
 
 civ6-mcp is distributed under the following license:

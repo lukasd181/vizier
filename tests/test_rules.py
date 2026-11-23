@@ -1,6 +1,6 @@
-from chancellor.models import CityView, EmpireSnapshot, Goal, RivalView, UnitView
-from chancellor.rules import MAX_ALERTS, review, run_rules
-from chancellor.rules.base import RuleContext
+from vizier.models import CityView, EmpireSnapshot, Goal, RivalView, UnitView
+from vizier.rules import MAX_ALERTS, review, run_rules
+from vizier.rules.base import RuleContext
 
 
 def snap(**kw) -> EmpireSnapshot:
@@ -156,13 +156,13 @@ def test_civilian_next_to_barbarian():
 
 
 def test_broken_rule_does_not_hide_others(monkeypatch):
-    from chancellor.rules import base
+    from vizier.rules import base
 
     def boom(ctx):
         raise RuntimeError("nope")
 
     monkeypatch.setattr(base, "RULES", base.RULES + [("boom", boom)])
-    import chancellor.rules as rules_pkg
+    import vizier.rules as rules_pkg
 
     monkeypatch.setattr(rules_pkg, "RULES", base.RULES)
     s = snap(rivals=[RivalView(1, "Korea", diplomatic_vp=19)])

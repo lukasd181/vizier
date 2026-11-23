@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from conftest import HIDDEN_MARKERS
 
-from chancellor.fog import FogFilter, find_leaks
-from chancellor.sources import lua_queries as q
+from vizier.fog import FogFilter, find_leaks
+from vizier.sources import lua_queries as q
 
 lupa = pytest.importorskip("lupa")
 
@@ -120,7 +120,7 @@ def test_city_not_found_raises():
 
 
 def test_mod_lua_compiles():
-    src = (Path(__file__).parent.parent / "mod" / "ChancellorAlerts" / "UI" / "ChancellorAlerts.lua").read_text()
+    src = (Path(__file__).parent.parent / "mod" / "VizierAlerts" / "UI" / "VizierAlerts.lua").read_text()
     rt = lupa.LuaRuntime()
     err = rt.eval("function(s) local f, e = load(s); return e end")(src)
     assert err is None, err
@@ -238,3 +238,29 @@ def test_settle_counts_reef_and_owned_luxuries():
     for s in spots:
         if "RESOURCE_SILK" in s["luxuries"]:
             assert s["new_luxury_types"] == 0
+
+
+def _run_with_mode(lua_source: str, mode_lua: str) -> list[str]:
+    rt = lupa.LuaRuntime(unpack_returned_tuples=True)
+    rt.execute(FAKE)
+    rt.execute(mode_lua)
+    rt.execute("local f = assert(load(...)); f()", lua_source)
+    out = rt.globals().OUT
+    return [out[i] for i in range(1, len(out) + 1)]
+
+
+@pytest.mark.parametrize(
+    "mode_lua, blocked",
+    [
+        ("", False),  # single player: no multiplayer flag set
+        ("GameConfiguration.IsAnyMultiplayer = function() return true end", True),
+        ("GameConfiguration.IsHotseat = function() return true end", True),  # not covered by IsAnyMultiplayer
+        ("GameConfiguration.IsPlayByCloud = function() return true end", True),
+    ],
+)
+def test_single_player_guard(mode_lua, blocked):
+    lines = _run_with_mode(q.LUA_SINGLE_PLAYER_GUARD + q.build_mentor_state_query([]), mode_lua)
+    if blocked:
+        assert lines == ["ERR:MULTIPLAYER", "---END---"]  # nothing else read
+    else:
+        assert any(l.startswith("CITY|") for l in lines)

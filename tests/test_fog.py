@@ -6,8 +6,8 @@ import os
 import pytest
 from conftest import HIDDEN_MARKERS, MIDGAME, run
 
-from chancellor import narrate as nr
-from chancellor.fog import FULL_VISION_BANNER, FogFilter, find_leaks, tile_to_dict
+from vizier import narrate as nr
+from vizier.fog import FULL_VISION_BANNER, FogFilter, find_leaks, tile_to_dict
 
 
 def test_unrevealed_tiles_dropped():
@@ -62,13 +62,13 @@ def test_no_leaks_in_any_mentor_output(mentor):
 
 
 def test_full_vision_is_stamped(monkeypatch):
-    monkeypatch.setenv("CHANCELLOR_DEBUG_FULL_VISION", "1")
+    monkeypatch.setenv("VIZIER_DEBUG_FULL_VISION", "1")
     f = FogFilter()
     assert f.full_vision
     assert f.stamp("x").startswith(FULL_VISION_BANNER)
 
 
 def test_full_vision_off_by_default(monkeypatch):
-    monkeypatch.delenv("CHANCELLOR_DEBUG_FULL_VISION", raising=False)
+    monkeypatch.delenv("VIZIER_DEBUG_FULL_VISION", raising=False)
     assert FogFilter().full_vision is False
     assert FogFilter().stamp("x") == "x"

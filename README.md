@@ -1,5 +1,3 @@
-# the-chancellor
-
 **Vizier**, a standalone Civ 6 mentor for human players, as an MCP server.
 
 Vizier talks to a running Civ 6 over the game's own debug port (FireTuner) to

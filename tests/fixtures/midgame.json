@@ -1,0 +1,137 @@
+{
+  "identity": ["civilization_japan", 4242],
+  "snapshot": {
+    "game": {
+      "turn": 85,
+      "civ": "Japan",
+      "leader": "Hojo Tokimune",
+      "difficulty": "Emperor",
+      "speed_multiplier": 100,
+      "era": "Classical",
+      "gold": 640,
+      "gold_per_turn": 12,
+      "faith": 120,
+      "faith_per_turn": 4,
+      "favor": 40,
+      "favor_per_turn": 1,
+      "science_per_turn": 22,
+      "culture_per_turn": 14,
+      "explored_land": 180,
+      "total_land": 1000,
+      "trade_capacity": 2,
+      "trade_active": 1,
+      "trade_ghosts": 0,
+      "religions_founded": 3,
+      "religions_max": 4,
+      "our_religion": "",
+      "alive_majors": 5,
+      "our_military_strength": 300,
+      "our_science_vp": 0,
+      "our_science_vp_needed": 50,
+      "our_diplomatic_vp": 2,
+      "our_tourism": 4,
+      "techs": ["TECH_POTTERY", "TECH_WRITING", "TECH_BRONZE_WORKING"],
+      "civics": ["CIVIC_CODE_OF_LAWS", "CIVIC_POLITICAL_PHILOSOPHY"],
+      "government": "GOVERNMENT_CLASSICAL_REPUBLIC",
+      "enabled_victories": ["VICTORY_TECHNOLOGY", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC", "VICTORY_CONQUEST", "VICTORY_SCORE"]
+    },
+    "cities": [
+      {
+        "city_id": 65536, "name": "Kyoto", "x": 10, "y": 10, "population": 7,
+        "amenities": 3, "amenities_needed": 3, "housing": 9.0,
+        "loyalty": 100, "loyalty_per_turn": 2, "production": 14,
+        "currently_building": "BUILDING_LIBRARY", "production_turns_left": 4,
+        "districts": ["DISTRICT_CITY_CENTER", "DISTRICT_CAMPUS"], "buildings": ["BUILDING_PALACE", "BUILDING_MONUMENT"],
+        "specialty_districts": 1, "has_governor": true, "is_capital": true, "has_garrison": true
+      },
+      {
+        "city_id": 131073, "name": "Nagoya", "x": 14, "y": 13, "population": 6,
+        "amenities": 0, "amenities_needed": 3, "housing": 6.0,
+        "loyalty": 40, "loyalty_per_turn": -5, "production": 6,
+        "currently_building": "NONE", "production_turns_left": 0,
+        "districts": ["DISTRICT_CITY_CENTER"], "buildings": [],
+        "specialty_districts": 0, "has_governor": false, "is_capital": false, "has_garrison": false
+      }
+    ],
+    "units": [
+      {"unit_id": 1, "unit_type": "UNIT_BUILDER", "x": 12, "y": 12, "moves_remaining": 2, "health": 100,
+       "is_civilian": true, "is_recon": false, "threat_distance": 2, "threat_desc": "Barbarian UNIT_HORSEMAN"},
+      {"unit_id": 2, "unit_type": "UNIT_WARRIOR", "x": 10, "y": 10, "moves_remaining": 1, "health": 100,
+       "is_civilian": false, "is_recon": false, "threat_distance": null, "threat_desc": ""}
+    ],
+    "rivals": [
+      {
+        "player_id": 1, "met": true, "name": "Korea", "score": 260, "num_cities": 7, "military_strength": 700,
+        "science_vp": 0, "science_vp_needed": 50, "diplomatic_vp": 15, "tourism": 10,
+        "has_religion": true, "religion_name": "Buddhism", "religion_civs_converted": 3,
+        "culture_civs_dominated": 0, "our_tourists_from_them": 1, "our_staycationers": 5,
+        "diplomatic_state": "NEUTRAL", "at_war": false, "we_have_delegation": false, "we_have_embassy": false,
+        "can_declare_friendship": true, "can_form_alliance": false, "is_friend": false, "is_ally": false
+      },
+      {
+        "player_id": 2, "met": false, "name": "HIDDEN_CIV_SPAIN", "score": 999, "num_cities": 15, "military_strength": 9999,
+        "science_vp": 40, "science_vp_needed": 50, "diplomatic_vp": 19, "tourism": 500,
+        "has_religion": true, "religion_name": "HIDDEN_RELIGION_CATHOLIC", "religion_civs_converted": 4,
+        "culture_civs_dominated": 3, "our_tourists_from_them": 0, "our_staycationers": 5,
+        "diplomatic_state": "UNKNOWN", "at_war": false, "we_have_delegation": false, "we_have_embassy": false,
+        "can_declare_friendship": false, "can_form_alliance": false, "is_friend": false, "is_ally": false
+      }
+    ],
+    "camps_seen": [[16, 9, 5]],
+    "camps_gone": [],
+    "warnings": []
+  },
+  "tiles": [
+    {"x": 11, "y": 10, "revealed": true, "visible": true, "terrain": "TERRAIN_GRASS", "feature": "", "resource": "RESOURCE_SILK",
+     "resource_class": "luxury", "resource_visible": true, "improvement": "", "pillaged": false, "district": "",
+     "owner_id": 0, "owner": "me", "city_id": 65536, "worked": false, "has_road": false, "appeal": 2},
+    {"x": 13, "y": 13, "revealed": true, "visible": true, "terrain": "TERRAIN_PLAINS", "feature": "", "resource": "RESOURCE_IRON",
+     "resource_class": "strategic", "resource_visible": true, "improvement": "IMPROVEMENT_MINE", "pillaged": true, "district": "",
+     "owner_id": 0, "owner": "me", "city_id": 131073, "worked": true, "has_road": true, "appeal": 0},
+    {"x": 0, "y": 0, "revealed": true, "visible": true, "terrain": "TERRAIN_COAST", "feature": "", "resource": "",
+     "resource_class": "", "resource_visible": false, "improvement": "", "pillaged": false, "district": "",
+     "owner_id": -1, "owner": "", "city_id": -1, "worked": false, "has_road": false, "appeal": 1},
+    {"x": 20, "y": 20, "revealed": false, "visible": false, "terrain": "TERRAIN_DESERT", "feature": "", "resource": "RESOURCE_HIDDEN_URANIUM",
+     "resource_class": "strategic", "resource_visible": true, "improvement": "IMPROVEMENT_HIDDEN_CAMP", "pillaged": false, "district": "",
+     "owner_id": 2, "owner": "HIDDEN_CIV_SPAIN", "city_id": -1, "worked": false, "has_road": false, "appeal": 0},
+    {"x": 18, "y": 11, "revealed": true, "visible": false, "terrain": "TERRAIN_TUNDRA", "feature": "FEATURE_HIDDEN_FOREST", "resource": "RESOURCE_DEER",
+     "resource_class": "bonus", "resource_visible": true, "improvement": "IMPROVEMENT_HIDDEN_FORT", "pillaged": false, "district": "DISTRICT_HIDDEN_ENCAMPMENT",
+     "owner_id": 1, "owner": "Korea", "city_id": -1, "worked": false, "has_road": true, "appeal": -1},
+    {"x": 15, "y": 14, "revealed": true, "visible": true, "terrain": "TERRAIN_HILLS", "feature": "", "resource": "RESOURCE_HIDDEN_NITER",
+     "resource_class": "strategic", "resource_visible": false, "improvement": "", "pillaged": false, "district": "",
+     "owner_id": 0, "owner": "me", "city_id": 131073, "worked": false, "has_road": false, "appeal": 0}
+  ],
+  "city_needs": {
+    "131073": {
+      "amenities": 0, "amenities_needed": 3, "population": 6, "housing": 6.0,
+      "amenity_sources": {"Luxuries": 0, "Entertainment": 0},
+      "amenity_losses": {"WarWeariness": 0, "Bankruptcy": 0},
+      "housing_sources": {"Water": 3, "Buildings": 0, "Improvements": 0.5},
+      "luxuries_held": {"RESOURCE_WINE": 1},
+      "unimproved_luxuries": [
+        {"resource": "RESOURCE_SILK", "x": 11, "y": 10, "pillaged": false, "builder_id": 1, "builder_distance": 3, "builder_moves": 2},
+        {"resource": "RESOURCE_WINE", "x": 15, "y": 12, "pillaged": false, "builder_id": 1, "builder_distance": 3, "builder_moves": 2}
+      ],
+      "loyalty": 40, "loyalty_per_turn": -5, "turns_to_conversion": 8,
+      "loyalty_sources": [["Citizen pressure from Korea", -9.0], ["Your citizens", 6.0], ["Unhappiness", -3.0]],
+      "governor_here": false, "unassigned_governor": true
+    }
+  },
+  "production": {
+    "131073": [
+      {"category": "BUILDING", "item_name": "BUILDING_MONUMENT", "cost": 60, "turns": 10, "gold_cost": 240, "is_repair": false},
+      {"category": "BUILDING", "item_name": "BUILDING_GRANARY", "cost": 65, "turns": 11, "gold_cost": 260, "is_repair": false},
+      {"category": "DISTRICT", "item_name": "DISTRICT_ENTERTAINMENT_COMPLEX", "cost": 110, "turns": 19, "gold_cost": -1, "is_repair": false},
+      {"category": "UNIT", "item_name": "UNIT_BUILDER", "cost": 50, "turns": 9, "gold_cost": 200, "is_repair": false}
+    ]
+  },
+  "policies": {
+    "government": "GOVERNMENT_CLASSICAL_REPUBLIC",
+    "slots": [{"slot_index": 0, "slot_type": "SLOT_MILITARY", "current_policy": "POLICY_AGOGE", "current_policy_name": "Agoge"}],
+    "available": [
+      {"policy_type": "POLICY_RETAINERS", "name": "Retainers", "description": "", "slot_type": "SLOT_MILITARY"},
+      {"policy_type": "POLICY_LIMITANEI", "name": "Limitanei", "description": "", "slot_type": "SLOT_MILITARY"}
+    ]
+  },
+  "parks": [{"x": 11, "y": 10, "appeal": 4, "city_id": 65536, "city": "Kyoto"}]
+}

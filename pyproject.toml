@@ -1,0 +1,36 @@
+[project]
+name = "the-chancellor"
+version = "0.1.0"
+description = "Vizier: a Civ 6 mentor MCP server built on civ6-mcp — fog-filtered turn reviews, fix-it options and goal tracking for human players"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # civ6-mcp is used as a library (GameConnection, GameState, lua builders).
+    # Its own lockfile pins mcp 1.x; mcp 2.x renamed FastMCP.
+    "civ6-mcp",
+    "mcp>=1.26,<2",
+]
+
+[project.scripts]
+chancellor-mcp = "chancellor.server:main"
+
+[tool.uv.sources]
+# Local checkout. Override with `pip install -e <path>` if yours lives elsewhere.
+civ6-mcp = { path = "/Users/lucasduong/Desktop/civ6-mcp", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chancellor"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "lupa>=2.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

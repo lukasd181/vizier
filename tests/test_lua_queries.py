@@ -167,3 +167,37 @@ def test_pin_icon_resolves_in_fake_game():
     lines = [out[i] for i in range(1, len(out) + 1)]
     assert "PIN|7|DISTRICT_CAMPUS" in lines
     assert rt.globals().PIN_ICON == "ICON_DISTRICT_CAMPUS"
+
+
+def test_identity_query():
+    assert q.parse_identity(execute(q.build_identity_query())) == ("america", -2096689920)
+
+
+def test_empire_query_parses_and_hides_unmet():
+    lines = execute(q.build_empire_query())
+    assert find_leaks("\n".join(lines), HIDDEN_MARKERS) == []
+    emp = q.parse_empire(lines)
+    ov = emp["overview"]
+    assert (ov["turn"], ov["civ"], ov["leader"], ov["gold"], ov["gold_per_turn"]) == (11, "Japan", "Teddy Roosevelt", 60.0, 5.0)
+    assert ov["favor"] == 7 and ov["favor_per_turn"] == 1  # tier-1 government
+    assert emp["era"] == ("Ancient Era", 2, 11, 25)
+    assert emp["difficulty"] == "Prince" and emp["speed_multiplier"] == 100
+    assert emp["enabled_victories"] == {"VICTORY_TECHNOLOGY", "VICTORY_SCORE"}
+    assert emp["me"] == {"military_strength": 20, "science_vp": 0, "science_vp_needed": 50, "diplomatic_vp": 2, "tourism": 1}
+    (korea,) = emp["rivals"]  # Spain (unmet) is not listed
+    assert (korea["name"], korea["military_strength"], korea["science_vp"], korea["diplomatic_state"]) == ("Korea", 45, 3, "NEUTRAL")
+    assert korea["can_declare_friendship"] and not korea["can_form_alliance"]
+    assert emp["trade"] == (1, 0, 1)  # the only route's trader no longer exists → ghost
+    total = emp["explored"][1]
+    assert 0 < emp["explored"][0] <= total
+    assert emp["policies"]["slots"][0] == {"slot_index": 0, "slot_type": "SLOT_ECONOMIC", "current_policy": "POLICY_GOD_KING"}
+    assert {a["policy_type"] for a in emp["policies"]["available"]} == {"POLICY_GOD_KING", "POLICY_SURVEY"}
+
+
+def test_production_query_parses():
+    opts = q.parse_production(execute(q.build_production_query(65536)))
+    by = {o["item_name"]: o for o in opts}
+    assert set(by) == {"UNIT_SETTLER", "BUILDING_MONUMENT", "DISTRICT_COMMERCIAL_HUB"}
+    assert by["BUILDING_MONUMENT"] == {"category": "BUILDING", "item_name": "BUILDING_MONUMENT", "cost": 80, "turns": 8,
+                                       "gold_cost": 240, "is_repair": False}
+    assert by["DISTRICT_COMMERCIAL_HUB"]["gold_cost"] == -1

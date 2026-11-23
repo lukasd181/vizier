@@ -1,25 +1,20 @@
-"""Live game over FireTuner, using civ6-mcp as the client library.
+"""Live game over FireTuner (chancellor.tuner), with Vizier's own Lua queries.
 
-civ6-mcp's GameState is MCP-free by design ("specialist servers import the
-same GameState class but expose different tool subsets"); this source reuses
-its connection, overview, victory, diplomacy, trade and production queries,
-and adds the mentor's own fog-aware queries from lua_queries.
+Two round-trips per snapshot: the empire query (overview, met rivals, trade,
+policies) and the state query (cities, units, camps, research, districts).
 
-The game allows one tuner connection at a time, so don't run the civ6-mcp
-server and this one against the same game simultaneously.
+The game allows one tuner connection at a time, so only one program
+(this server, civ6-mcp, FireTuner) can talk to a game at once.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
 from typing import Any
-
-from civ_mcp.connection import GameConnection
-from civ_mcp.game_state import GameState
 
 from chancellor.sources import lua_queries as mq
 from chancellor.sources.base import SnapshotResult
+from chancellor.tuner import GameConnection
 
 log = logging.getLogger(__name__)
 
@@ -28,133 +23,82 @@ class TunerSource:
     name = "tuner"
 
     def __init__(self, host: str = "127.0.0.1", port: int = 4318):
-        # FireTuner stays on localhost: the spec's guardrail. Refuse anything else.
-        if host not in ("127.0.0.1", "localhost", "::1"):
-            raise ValueError("FireTuner must stay on localhost; remote access goes through the daemon")
-        self.conn = GameConnection(host, port)
-        self.gs = GameState(self.conn)
+        self.conn = GameConnection(host, port)  # refuses non-localhost hosts
 
     async def game_identity(self) -> tuple[str, int]:
-        return await self.gs.get_game_identity()
+        return mq.parse_identity(await self._write(mq.build_identity_query()))
 
     async def _write(self, lua: str, timeout: float = 10.0) -> list[str]:
         return await self.conn.execute_write(lua, timeout=timeout)
 
     async def snapshot(self, known_camps: list[tuple[int, int]]) -> SnapshotResult:
-        warnings: list[str] = []
-
-        ov = await self.gs.get_game_overview()
-        me = ov.player_id
-
+        emp = mq.parse_empire(await self._write(mq.build_empire_query(), timeout=20.0))
         state = mq.parse_mentor_state(
             await self._write(mq.build_mentor_state_query(known_camps), timeout=20.0)
         )
-        warnings.extend(state["warnings"])
+        warnings: list[str] = list(state["warnings"])
+        ov = emp["overview"]
+        if not ov:
+            warnings.append("empire overview unavailable")
 
-        vp = None
-        try:
-            vp = await self.gs.get_victory_progress()
-        except Exception as e:  # keep the review running; flag the gap
-            warnings.append(f"victory progress unavailable: {e}")
-
-        civs = {}
-        try:
-            civs = {c.player_id: c for c in await self.gs.get_diplomacy()}
-        except Exception as e:
-            warnings.append(f"diplomacy unavailable: {e}")
-
-        trade_cap = trade_active = trade_ghosts = 0
-        try:
-            tr = await self.gs.get_trade_routes()
-            trade_cap, trade_active, trade_ghosts = tr.capacity, tr.active_count, tr.ghost_count
-        except Exception as e:
-            warnings.append(f"trade routes unavailable: {e}")
-
-        slotted: set[str] = set()
-        available: set[str] = set()
-        try:
-            pol = await self.gs.get_policies()
-            slotted = {sl.current_policy for sl in pol.slots if sl.current_policy}
-            available = {p.policy_type for p in pol.available_policies}
-        except Exception as e:
-            warnings.append(f"policies unavailable: {e}")
-
-        ours = None
         rivals: list[dict[str, Any]] = []
-        for p in vp.players if vp else []:
-            if p.player_id == me:
-                ours = p
-                continue
-            civ = civs.get(p.player_id)
-            actions = set(civ.available_actions or []) if civ else set()
-            rel = state["religion"].get(p.player_id)
-            cult = state["culture"].get(p.player_id, (0, 0, 0))
+        for r in emp["rivals"]:
+            rel = state["religion"].get(r["player_id"])
+            cult = state["culture"].get(r["player_id"], (0, 0, 0))
             rivals.append(
-                {
-                    "player_id": p.player_id,
-                    # victory progress only prints met players; diplomacy says so explicitly
-                    "met": p.name != "Unmet" and (civ.has_met if civ else True),
-                    "name": p.name,
-                    "score": p.score,
-                    "num_cities": p.num_cities,
-                    "military_strength": p.military_strength,
-                    "science_vp": p.science_vp,
-                    "science_vp_needed": p.science_vp_needed,
-                    "diplomatic_vp": p.diplomatic_vp,
-                    "tourism": p.tourism,
-                    "has_religion": p.has_religion,
+                r
+                | {
+                    "met": True,  # the empire query only lists players we have met
                     "religion_name": rel[0] if rel else "",
                     "religion_civs_converted": rel[1] if rel else 0,
                     "culture_civs_dominated": cult[0],
                     "our_tourists_from_them": cult[1],
                     "our_staycationers": cult[2],
-                    "diplomatic_state": civ.diplomatic_state if civ else "UNKNOWN",
-                    "at_war": civ.is_at_war if civ else False,
-                    "we_have_delegation": civ.has_delegation if civ else False,
-                    "we_have_embassy": civ.has_embassy if civ else False,
-                    "can_declare_friendship": "DECLARE_FRIENDSHIP" in actions,
-                    "can_form_alliance": "MAKE_ALLIANCE" in actions,
-                    "is_friend": (civ.diplomatic_state == "DECLARED_FRIEND") if civ else False,
-                    "is_ally": bool(civ and (civ.alliance_type or civ.diplomatic_state == "ALLIED")),
                 }
             )
 
+        me = emp["me"]
+        explored, total_land = emp["explored"]
+        era_name, era_score, era_dark, era_golden = emp["era"]
+        founded, max_rel = emp["religions"]
+        cap, active, ghosts = emp["trade"]
+        pol = emp["policies"]
         game = {
-            "turn": ov.turn,
-            "civ": ov.civ_name,
-            "leader": ov.leader_name,
-            "difficulty": ov.difficulty,
-            "speed_multiplier": ov.speed_cost_multiplier or 100,
-            "era": ov.era_name,
-            "gold": ov.gold,
-            "gold_per_turn": ov.gold_per_turn,
-            "faith": ov.faith,
+            "turn": ov.get("turn", 0),
+            "civ": ov.get("civ", ""),
+            "leader": ov.get("leader", ""),
+            "difficulty": emp["difficulty"],
+            "speed_multiplier": emp["speed_multiplier"],
+            "era": era_name,
+            "gold": ov.get("gold", 0.0),
+            "gold_per_turn": ov.get("gold_per_turn", 0.0),
+            "faith": ov.get("faith", 0.0),
             "faith_per_turn": state["faith_per_turn"],
-            "favor": ov.diplomatic_favor,
-            "favor_per_turn": ov.favor_per_turn,
-            "science_per_turn": ov.science_yield,
-            "culture_per_turn": ov.culture_yield,
-            "explored_land": ov.explored_land,
-            "total_land": ov.total_land,
-            "trade_capacity": trade_cap,
-            "trade_active": trade_active,
-            "trade_ghosts": trade_ghosts,
-            "religions_founded": ov.religions_founded,
-            "religions_max": ov.religions_max,
-            "our_religion": ov.our_religion or "",
+            "favor": ov.get("favor", 0),
+            "favor_per_turn": ov.get("favor_per_turn", 0),
+            "science_per_turn": ov.get("science_per_turn", 0.0),
+            "culture_per_turn": ov.get("culture_per_turn", 0.0),
+            "explored_land": explored,
+            "total_land": total_land,
+            "trade_capacity": cap,
+            "trade_active": active,
+            "trade_ghosts": ghosts,
+            "religions_founded": founded,
+            "religions_max": max_rel,
+            "our_religion": emp["our_religion"],
             "alive_majors": state["alive_majors"],
-            "our_military_strength": ours.military_strength if ours else 0,
-            "our_science_vp": ours.science_vp if ours else 0,
-            "our_science_vp_needed": ours.science_vp_needed if ours else 0,
-            "our_diplomatic_vp": ours.diplomatic_vp if ours else 0,
-            "our_tourism": ours.tourism if ours else 0,
+            "our_military_strength": me.get("military_strength", 0),
+            "our_science_vp": me.get("science_vp", 0),
+            "our_science_vp_needed": me.get("science_vp_needed", 0),
+            "our_diplomatic_vp": me.get("diplomatic_vp", 0),
+            "our_tourism": me.get("tourism", 0),
             "techs": state["techs"],
             "civics": state["civics"],
             "government": state["government"],
-            "enabled_victories": set(ov.enabled_victories or (vp.enabled_victories if vp else set())),
-            "era_score": ov.era_score,
-            "era_dark_threshold": ov.era_dark_threshold,
-            "era_golden_threshold": ov.era_golden_threshold,
+            "enabled_victories": emp["enabled_victories"],
+            "era_score": era_score,
+            "era_dark_threshold": era_dark,
+            "era_golden_threshold": era_golden,
             "era_countdown": state["era_countdown"],
             "age": state["age"],
             "luxuries": state["luxuries"],
@@ -162,8 +106,8 @@ class TunerSource:
             "governors": state["governors"],
             "has_pantheon": state["has_pantheon"],
             "unplaced_districts": state["unplaced_districts"],
-            "slotted_policies": slotted,
-            "available_policies": available,
+            "slotted_policies": {sl["current_policy"] for sl in pol["slots"] if sl["current_policy"]},
+            "available_policies": {a["policy_type"] for a in pol["available"]},
         }
         return SnapshotResult(
             game=game,
@@ -183,15 +127,10 @@ class TunerSource:
         return mq.parse_city_needs(await self._write(mq.build_city_needs_query(city_id), timeout=15.0))
 
     async def production_options(self, city_id: int) -> list[dict[str, Any]]:
-        return [asdict(o) for o in await self.gs.list_city_production(city_id)]
+        return mq.parse_production(await self._write(mq.build_production_query(city_id), timeout=15.0))
 
     async def policies(self) -> dict[str, Any]:
-        st = await self.gs.get_policies()
-        return {
-            "government": st.government_type,
-            "slots": [asdict(s) for s in st.slots],
-            "available": [asdict(p) for p in st.available_policies],
-        }
+        return mq.parse_policies(await self._write(mq.build_policies_query()))
 
     async def park_sites(self) -> list[dict[str, Any]]:
         return mq.parse_park_sites(await self._write(mq.build_park_sites_query(), timeout=10.0))

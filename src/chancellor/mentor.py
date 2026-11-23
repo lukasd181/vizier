@@ -1,6 +1,6 @@
 """The mentor service: source → fog filter → store → rules.
 
-MCP-free, like civ6-mcp's GameState, so the same logic can sit behind the
+MCP-free, so the same logic can sit behind the
 MCP server, a test, or a replay harness.
 """
 

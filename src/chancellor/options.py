@@ -212,7 +212,7 @@ def amenity_options(
                 turns=None,
                 cost="a deal",
                 confidence="depends",
-                notes="Each new luxury type helps up to 4 cities. Test the deal first (civ6-mcp propose_trade mode=test).",
+                notes="Each new luxury type helps up to 4 cities. Check what the AI offers in its trade screen first.",
             )
         )
     return rank(opts)

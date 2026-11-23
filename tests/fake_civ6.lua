@@ -311,3 +311,104 @@ Map.GetCityPlots = function()
 end
 Cities = { GetPlotPurchaseCity = function(plot) if plot:GetOwner() == 0 then return myCities[1] end return nil end }
 CityManager = { GetCity = function(pid, id) for _, c in ipairs(myCities) do if c.id % 65536 == id then return c end end return nil end }
+
+-- ---------------------------------------------------------------------------
+-- Extras for the identity / empire / policies / production queries
+-- ---------------------------------------------------------------------------
+GameInfo.Governments[0].Tier = "GOVERNMENT_TIER_1"
+GameInfo.Eras = gameinfo({ { EraType = "ERA_ANCIENT", Name = "Ancient Era" } }, "EraType")
+GameInfo.Difficulties = gameinfo({ { DifficultyType = "DIFFICULTY_PRINCE", Name = "Prince" } }, "DifficultyType")
+GameInfo.GameSpeeds = gameinfo({ { GameSpeedType = "GAMESPEED_STANDARD", CostMultiplier = 100 } }, "GameSpeedType")
+GameInfo.Victories = gameinfo({
+  { VictoryType = "VICTORY_TECHNOLOGY" }, { VictoryType = "VICTORY_CULTURE" }, { VictoryType = "VICTORY_SCORE" },
+}, "VictoryType")
+GameInfo.Policies = gameinfo({
+  { PolicyType = "POLICY_GOD_KING", Name = "God King", GovernmentSlotType = "SLOT_ECONOMIC" },
+  { PolicyType = "POLICY_SURVEY", Name = "Survey", GovernmentSlotType = "SLOT_MILITARY" },
+  { PolicyType = "POLICY_HIDDEN_LOCKED", Name = "Locked", GovernmentSlotType = "SLOT_ECONOMIC" },
+}, "PolicyType")
+GameInfo.Yields = gameinfo({ { YieldType = "YIELD_FOOD" }, { YieldType = "YIELD_GOLD" } }, "YieldType")
+MilitaryFormationTypes = { STANDARD_MILITARY_FORMATION = 0 }
+GameConfiguration = {
+  GetValue = function(k) if k == "GAME_SYNC_RANDOM_SEED" then return -2096689920 end return nil end,
+  MakeHash = function(s) return #s end,
+}
+PlayerConfigurations[0].GetCivilizationTypeName = function() return "CIVILIZATION_AMERICA" end
+for pid, cfg in pairs(PlayerConfigurations) do
+  cfg.GetLeaderName = function() return pid == 0 and "Teddy Roosevelt" or "Leader" .. pid end
+  cfg.GetHandicapTypeID = function() return #"DIFFICULTY_PRINCE" end
+end
+Game.GetCurrentGameTurn = function() return 11 end
+Game.GetGameSpeedType = function() return 0 end
+Game.IsVictoryEnabled = function(idx) return GameInfo.Victories[idx].VictoryType ~= "VICTORY_CULTURE" end
+Game.GetEras = (function(orig)
+  return function()
+    local e = orig()
+    e.GetCurrentEra = function() return 0 end
+    e.GetPlayerCurrentScore = function(self, p) return 2 end
+    e.GetPlayerDarkAgeThreshold = function(self, p) return 11 end
+    e.GetPlayerGoldenAgeThreshold = function(self, p) return 25 end
+    return e
+  end
+end)(Game.GetEras)
+Plot.IsWater = function(self) return self.terrain == nil and self.x >= 5 and self.y == 0 end
+
+local function extend(pid, extra)
+  local p = Players[pid]
+  local base = { GetTechs = p.GetTechs, GetCulture = p.GetCulture, GetReligion = p.GetReligion, GetDiplomacy = p.GetDiplomacy }
+  p.GetScore = function() return extra.score end
+  p.GetFavor = function() return 7 end
+  p.GetTreasury = function()
+    return { GetGoldBalance = function() return 60 end, GetGoldYield = function() return 6 end, GetTotalMaintenance = function() return 1 end }
+  end
+  p.GetTechs = function(self) local t = base.GetTechs(self); t.GetScienceYield = function() return 2.5 end; return t end
+  p.GetCulture = function(self)
+    local c = base.GetCulture(self)
+    c.GetCultureYield = function() return 1.3 end
+    c.GetNumPolicySlots = function() return 2 end
+    c.GetSlotType = function(_, s) return s == 0 and 0 or 1 end
+    c.GetSlotPolicy = function(_, s) return s == 0 and 0 or -1 end
+    c.IsPolicyUnlocked = function(_, i) return i <= 1 end
+    c.CanSlotPolicy = function(_, i, s) return i <= 1 end
+    return c
+  end
+  p.GetReligion = function(self) local r = base.GetReligion(self); r.GetFaithBalance = function() return 0 end; return r end
+  p.GetDiplomacy = function(self)
+    local d = base.GetDiplomacy(self)
+    d.HasDelegationAt = function(_, o) return false end
+    d.HasEmbassyAt = function(_, o) return false end
+    d.IsDiplomaticActionValid = function(_, a, o) return a == "DIPLOACTION_DECLARE_FRIENDSHIP" end
+    d.GetAllianceType = function() return -1 end
+    d.GetAllianceLevel = function() return 0 end
+    return d
+  end
+  p.GetDiplomaticAI = function() return { GetDiplomaticStateIndex = function(_, o) return 3 end } end
+  p.GetStats = function()
+    return {
+      GetMilitaryStrength = function() return extra.mil end,
+      GetScienceVictoryPoints = function() return extra.svp end,
+      GetScienceVictoryPointsTotalNeeded = function() return 50 end,
+      GetDiplomaticVictoryPoints = function() return extra.dvp end,
+      GetTourism = function() return 1 end,
+    }
+  end
+  p.GetInfluence = function() return { CanReceiveInfluence = function() return false end } end
+  p.GetTrade = function() return { GetOutgoingRouteCapacity = function() return extra.cap or 0 end } end
+end
+extend(0, { score = 30, mil = 20, svp = 0, dvp = 2, cap = 1 })
+extend(1, { score = 40, mil = 45, svp = 3, dvp = 9 })
+extend(2, { score = 999, mil = 9999, svp = 40, dvp = 19 })   -- unmet: must never appear
+myCities[1].GetTrade = function() return { GetOutgoingRoutes = function() return { { TraderUnitID = 999, DestinationCityPlayer = 0, DestinationCityID = 1 } } end } end
+myCities[1].GetGold = function() return { GetPurchaseCost = function(_, y, h, f) return 240 end } end
+local bqOrig = myCities[1].GetBuildQueue
+myCities[1].GetBuildQueue = function(self)
+  local bq = bqOrig(self)
+  bq.CanProduce = function(_, hash, flag)
+    local u = GameInfo.Units[hash]; local b = GameInfo.Buildings[hash]; local d = GameInfo.Districts[hash]
+    return (u and u.UnitType == "UNIT_SETTLER") or (b and b.BuildingType == "BUILDING_MONUMENT")
+        or (d and d.DistrictType == "DISTRICT_COMMERCIAL_HUB") or false
+  end
+  bq.GetProductionCost = function(_, hash) return 80 end
+  bq.GetTurnsLeft = function(_, hash) return 8 end
+  return bq
+end

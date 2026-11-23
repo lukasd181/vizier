@@ -1,10 +1,10 @@
-"""Mentor-specific Lua queries, sent over FireTuner like civ6-mcp's own.
+"""Vizier's Lua queries, sent to the game over FireTuner (chancellor.tuner).
 
-Conventions follow civ_mcp.lua: each build_* returns Lua source that prints
-pipe-delimited lines and ends with the sentinel; each parse_* turns those
-lines into plain dicts. All of these run in the InGame context
-(GameConnection.execute_write), which is where the game's own UI code calls
-the same APIs.
+Each build_* returns Lua source that prints pipe-delimited lines and ends
+with the sentinel; each parse_* turns those lines into plain dicts. All of
+these run in the InGame context (GameConnection.execute_write), which is
+where the game's own UI code calls the same APIs. The identity, empire,
+policy and production queries are adapted from civ6-mcp's (MIT, see NOTICE).
 
 Fog rules applied here, at the source (fog.py re-applies them in Python):
   * tiles: only plots PlayersVisibility:IsRevealed; anything that can change
@@ -22,7 +22,7 @@ Civ6.app/Contents/Assets (see docs/game-data-evidence.md).
 
 from __future__ import annotations
 
-from civ_mcp.lua._helpers import SENTINEL
+from chancellor.tuner import SENTINEL
 
 
 def _lua_str_list(items: list[str]) -> str:
@@ -61,8 +61,8 @@ end
 
 
 def build_mentor_state_query(known_camps: list[tuple[int, int]] | None = None) -> str:
-    """One round-trip for everything the turn watcher needs beyond civ6-mcp's
-    overview / victory / diplomacy / trade queries.
+    """Cities, units, camps, techs, eras, research and districts — one round-trip.
+    build_empire_query covers the overview, rivals, trade and policies.
 
     known_camps: camps remembered from earlier turns; for each one on a plot
     we can see now, prints CAMPGONE if it has been cleared.
@@ -1011,3 +1011,383 @@ local seq = ExposedMembers.Chancellor_TurnSeq
 print("SEQ|" .. tostring(seq))
 print("{SENTINEL}")
 """
+
+
+
+# ---------------------------------------------------------------------------
+# Identity, empire overview, rivals, trade, policies (adapted from civ6-mcp)
+# ---------------------------------------------------------------------------
+
+
+def build_identity_query() -> str:
+    """(civ type, map seed): keys per-game storage so games never mix."""
+    return f"""
+local cfg = PlayerConfigurations[Game.GetLocalPlayer()]
+print("GAMESEED|" .. cfg:GetCivilizationTypeName() .. "|" .. tostring(GameConfiguration.GetValue("GAME_SYNC_RANDOM_SEED")))
+print("{SENTINEL}")
+"""
+
+
+def parse_identity(lines: list[str]) -> tuple[str, int]:
+    for line in lines:
+        if line.startswith("GAMESEED|"):
+            _, civ, seed = line.split("|", 2)
+            try:
+                return civ.replace("CIVILIZATION_", "").lower(), int(float(seed))
+            except ValueError:
+                return civ.replace("CIVILIZATION_", "").lower(), 0
+    return "unknown", 0
+
+
+def build_empire_query() -> str:
+    """Overview, met rivals' visible victory/diplomacy facts, trade and policies."""
+    return (
+        _LUA_PRELUDE
+        + """
+local cfg = PlayerConfigurations[me]
+local tr = pMe:GetTreasury()
+local cu = pMe:GetCulture()
+
+-- Diplomatic favor per turn, as civ6-mcp estimates it: government tier,
+-- alliance levels and suzerainties (the game exposes no direct getter).
+local favorPT = 0
+pcall(function()
+    local g = GameInfo.Governments[cu:GetCurrentGovernment()]
+    if g and g.Tier then favorPT = favorPT + math.max(1, tonumber(tostring(g.Tier):match("(%d+)$")) or 0) end
+end)
+for i = 0, 62 do
+    local p = Players[i]
+    if p and p:IsAlive() then
+        if i ~= me and p:IsMajor() and pDiplo:HasMet(i) then
+            pcall(function()
+                if p:GetDiplomaticAI():GetDiplomaticStateIndex(me) == 0 then
+                    favorPT = favorPT + (tonumber(pDiplo:GetAllianceLevel(i)) or 1)
+                end
+            end)
+        end
+        pcall(function()
+            local inf = p:GetInfluence()
+            if inf:CanReceiveInfluence() and inf:GetSuzerain() == me then favorPT = favorPT + 1 end
+        end)
+    end
+end
+print("OV|" .. Game.GetCurrentGameTurn() .. "|" .. me .. "|" .. clean(Locale.Lookup(cfg:GetCivilizationShortDescription()))
+    .. "|" .. clean(Locale.Lookup(cfg:GetLeaderName())) .. "|" .. string.format("%.1f", tr:GetGoldBalance())
+    .. "|" .. string.format("%.1f", tr:GetGoldYield() - tr:GetTotalMaintenance())
+    .. "|" .. string.format("%.1f", pMe:GetTechs():GetScienceYield()) .. "|" .. string.format("%.1f", cu:GetCultureYield())
+    .. "|" .. string.format("%.1f", pMe:GetReligion():GetFaithBalance()) .. "|" .. (pMe:GetFavor() or 0) .. "|" .. favorPT)
+
+-- Land explored
+local revLand, totalLand = 0, 0
+for i = 0, Map.GetPlotCount() - 1 do
+    local plot = Map.GetPlotByIndex(i)
+    if not plot:IsWater() then
+        totalLand = totalLand + 1
+        if vis:IsRevealed(i) then revLand = revLand + 1 end
+    end
+end
+print("EXPLORE|" .. revLand .. "|" .. totalLand)
+
+-- Religion slots (counts every major — the game shows "X of Y founded")
+local nMajors, nRel = 0, 0
+for i = 0, 62 do
+    local p = Players[i]
+    if p and p:IsMajor() and p:IsAlive() then
+        nMajors = nMajors + 1
+        local r = p:GetReligion():GetReligionTypeCreated()
+        if r and r >= 0 then
+            nRel = nRel + 1
+            if i == me then
+                local row = GameInfo.Religions[r]
+                print("OURREL|" .. (row and clean(Locale.Lookup(row.Name)) or "?"))
+            end
+        end
+    end
+end
+print("RELSLOTS|" .. nRel .. "|" .. (math.floor(nMajors / 2) + 1))
+
+-- Era score
+pcall(function()
+    local eras = Game.GetEras()
+    local row = GameInfo.Eras[eras:GetCurrentEra()]
+    print("ERASCORE|" .. (row and clean(Locale.Lookup(row.Name)) or "?") .. "|" .. eras:GetPlayerCurrentScore(me)
+        .. "|" .. eras:GetPlayerDarkAgeThreshold(me) .. "|" .. eras:GetPlayerGoldenAgeThreshold(me))
+end)
+
+-- Difficulty, speed, victories
+pcall(function()
+    local h = cfg:GetHandicapTypeID()
+    for d in GameInfo.Difficulties() do
+        if GameConfiguration.MakeHash(d.DifficultyType) == h then print("DIFF|" .. clean(Locale.Lookup(d.Name))); break end
+    end
+end)
+pcall(function()
+    local gs = GameInfo.GameSpeeds[Game.GetGameSpeedType()]
+    if gs then print("SPEED|" .. (gs.CostMultiplier or 100)) end
+end)
+local ven = {}
+for _, vt in ipairs({"VICTORY_TECHNOLOGY", "VICTORY_CONQUEST", "VICTORY_CULTURE", "VICTORY_RELIGIOUS", "VICTORY_DIPLOMATIC", "VICTORY_SCORE"}) do
+    local row = GameInfo.Victories[vt]
+    if row then
+        local ok, en = pcall(function() return Game.IsVictoryEnabled(row.Index) end)
+        if ok and en then table.insert(ven, vt) end
+    end
+end
+print("VENABLED|" .. table.concat(ven, ";"))
+
+-- Our victory stats, then met rivals' (the World Rankings screen shows these)
+local function stats(p)
+    local st = p:GetStats()
+    local mil, svp, sneed, dvp, tour = 0, 0, 0, 0, 0
+    pcall(function() mil = st:GetMilitaryStrength() end)
+    pcall(function() svp = st:GetScienceVictoryPoints() end)
+    pcall(function() sneed = st:GetScienceVictoryPointsTotalNeeded() end)
+    pcall(function() dvp = st:GetDiplomaticVictoryPoints() end)
+    pcall(function() tour = st:GetTourism() end)
+    return mil .. "|" .. svp .. "|" .. sneed .. "|" .. dvp .. "|" .. tour
+end
+print("ME|" .. stats(pMe))
+local states = {"ALLIED", "DECLARED_FRIEND", "FRIENDLY", "NEUTRAL", "UNFRIENDLY", "DENOUNCED", "WAR"}
+for i = 0, 62 do
+    local p = Players[i]
+    if i ~= me and p and p:IsMajor() and p:IsAlive() and pDiplo:HasMet(i) then
+        pcall(function()
+            local state = "UNKNOWN"
+            pcall(function() state = states[p:GetDiplomaticAI():GetDiplomaticStateIndex(me) + 1] or "UNKNOWN" end)
+            local acts = {}
+            for _, a in ipairs({"DIPLOACTION_DECLARE_FRIENDSHIP", "DIPLOACTION_MAKE_ALLIANCE"}) do
+                local ok, v = pcall(function() return pDiplo:IsDiplomaticActionValid(a, i, false) end)
+                if ok and v then table.insert(acts, (a:gsub("DIPLOACTION_", ""))) end
+            end
+            local allied = "0"
+            pcall(function() if pDiplo:GetAllianceType(i) >= 0 then allied = "1" end end)
+            local nC = 0
+            for _ in p:GetCities():Members() do nC = nC + 1 end
+            print("RIVAL|" .. i .. "|" .. clean(Locale.Lookup(PlayerConfigurations[i]:GetCivilizationShortDescription()))
+                .. "|" .. p:GetScore() .. "|" .. nC .. "|" .. stats(p)
+                .. "|" .. (p:GetReligion():GetReligionTypeCreated() >= 0 and "1" or "0")
+                .. "|" .. state .. "|" .. (pDiplo:IsAtWarWith(i) and "1" or "0")
+                .. "|" .. (pDiplo:HasDelegationAt(i) and "1" or "0") .. "|" .. (pDiplo:HasEmbassyAt(i) and "1" or "0")
+                .. "|" .. table.concat(acts, ";") .. "|" .. allied)
+        end)
+    end
+end
+
+-- Trade: capacity, active routes, and "ghost" routes whose trader is gone
+pcall(function()
+    local traders = {}
+    for _, u in pMe:GetUnits():Members() do
+        local info = GameInfo.Units[u:GetType()]
+        if info and info.UnitType == "UNIT_TRADER" then traders[u:GetID()] = true end
+    end
+    local seen, active, ghosts = {}, 0, 0
+    for _, c in pMe:GetCities():Members() do
+        pcall(function()
+            for _, r in ipairs(c:GetTrade():GetOutgoingRoutes() or {}) do
+                local key = r.TraderUnitID .. "_" .. r.DestinationCityPlayer .. "_" .. r.DestinationCityID
+                if not seen[key] then
+                    seen[key] = true
+                    if traders[r.TraderUnitID] then active = active + 1 else ghosts = ghosts + 1 end
+                end
+            end
+        end)
+    end
+    print("TRADE|" .. pMe:GetTrade():GetOutgoingRouteCapacity() .. "|" .. active .. "|" .. ghosts)
+end)
+"""
+        + _LUA_POLICIES
+        + """
+print("{SENTINEL}")
+""".replace("{SENTINEL}", SENTINEL)
+    )
+
+
+# Slotted and slot-able policies (shared by the empire and policies queries).
+_LUA_POLICIES = """
+pcall(function()
+    local cu = pMe:GetCulture()
+    local n = cu:GetNumPolicySlots()
+    local slotNames = {[0] = "SLOT_ECONOMIC", [1] = "SLOT_MILITARY", [2] = "SLOT_DIPLOMATIC", [3] = "SLOT_WILDCARD", [4] = "SLOT_WILDCARD"}
+    for sIdx = 0, n - 1 do
+        local pi = cu:GetSlotPolicy(sIdx)
+        local pt = (pi and pi >= 0 and GameInfo.Policies[pi]) and GameInfo.Policies[pi].PolicyType or ""
+        print("PSLOT|" .. sIdx .. "|" .. (slotNames[cu:GetSlotType(sIdx)] or "SLOT_OTHER") .. "|" .. pt)
+    end
+    for pol in GameInfo.Policies() do
+        if cu:IsPolicyUnlocked(pol.Index) then
+            for sIdx = 0, n - 1 do
+                if cu:CanSlotPolicy(pol.Index, sIdx) then
+                    print("PAVAIL|" .. pol.PolicyType .. "|" .. clean(Locale.Lookup(pol.Name)) .. "|" .. (pol.GovernmentSlotType or "SLOT_WILDCARD"))
+                    break
+                end
+            end
+        end
+    end
+end)
+"""
+
+
+def parse_empire(lines: list[str]) -> dict:
+    out: dict = {
+        "overview": {},
+        "explored": (0, 0),
+        "our_religion": "",
+        "religions": (0, 0),
+        "era": ("", 0, 0, 0),
+        "difficulty": "",
+        "speed_multiplier": 100,
+        "enabled_victories": set(),
+        "me": {},
+        "rivals": [],
+        "trade": (0, 0, 0),
+        "policies": parse_policies(lines),
+    }
+
+    def stats(parts: list[str]) -> dict:
+        return {
+            "military_strength": int(float(parts[0])),
+            "science_vp": int(float(parts[1])),
+            "science_vp_needed": int(float(parts[2])),
+            "diplomatic_vp": int(float(parts[3])),
+            "tourism": int(float(parts[4])),
+        }
+
+    for line in lines:
+        p = line.split("|")
+        try:
+            if p[0] == "OV" and len(p) >= 12:
+                out["overview"] = {
+                    "turn": int(p[1]),
+                    "player_id": int(p[2]),
+                    "civ": p[3],
+                    "leader": p[4],
+                    "gold": float(p[5]),
+                    "gold_per_turn": float(p[6]),
+                    "science_per_turn": float(p[7]),
+                    "culture_per_turn": float(p[8]),
+                    "faith": float(p[9]),
+                    "favor": int(float(p[10])),
+                    "favor_per_turn": int(float(p[11])),
+                }
+            elif p[0] == "EXPLORE":
+                out["explored"] = (int(p[1]), int(p[2]))
+            elif p[0] == "OURREL":
+                out["our_religion"] = p[1]
+            elif p[0] == "RELSLOTS":
+                out["religions"] = (int(p[1]), int(p[2]))
+            elif p[0] == "ERASCORE":
+                out["era"] = (p[1], int(p[2]), int(p[3]), int(p[4]))
+            elif p[0] == "DIFF":
+                out["difficulty"] = p[1]
+            elif p[0] == "SPEED":
+                out["speed_multiplier"] = int(float(p[1]))
+            elif p[0] == "VENABLED":
+                out["enabled_victories"] = {v for v in p[1].split(";") if v}
+            elif p[0] == "ME" and len(p) >= 6:
+                out["me"] = stats(p[1:6])
+            elif p[0] == "RIVAL" and len(p) >= 17:
+                acts = set(p[15].split(";")) if p[15] else set()
+                out["rivals"].append(
+                    {
+                        "player_id": int(p[1]),
+                        "name": p[2],
+                        "score": int(float(p[3])),
+                        "num_cities": int(p[4]),
+                        **stats(p[5:10]),
+                        "has_religion": p[10] == "1",
+                        "diplomatic_state": p[11],
+                        "at_war": p[12] == "1",
+                        "we_have_delegation": p[13] == "1",
+                        "we_have_embassy": p[14] == "1",
+                        "can_declare_friendship": "DECLARE_FRIENDSHIP" in acts,
+                        "can_form_alliance": "MAKE_ALLIANCE" in acts,
+                        "is_friend": p[11] == "DECLARED_FRIEND",
+                        "is_ally": p[16] == "1" or p[11] == "ALLIED",
+                    }
+                )
+            elif p[0] == "TRADE":
+                out["trade"] = (int(p[1]), int(p[2]), int(p[3]))
+        except (ValueError, IndexError):
+            continue
+    return out
+
+
+def build_policies_query() -> str:
+    return _LUA_PRELUDE + _LUA_POLICIES + f'\nprint("{SENTINEL}")\n'
+
+
+def parse_policies(lines: list[str]) -> dict:
+    slots, available = [], []
+    for line in lines:
+        p = line.split("|")
+        if p[0] == "PSLOT" and len(p) >= 4:
+            slots.append({"slot_index": int(p[1]), "slot_type": p[2], "current_policy": p[3] or None})
+        elif p[0] == "PAVAIL" and len(p) >= 4:
+            available.append({"policy_type": p[1], "name": p[2], "slot_type": p[3]})
+    return {"slots": slots, "available": available}
+
+
+def build_production_query(city_id: int) -> str:
+    """What a city can make now: production cost, turns and gold cost (-1 = can't buy)."""
+    return (
+        _LUA_PRELUDE
+        + f"""
+local c = CityManager.GetCity(me, {city_id} % 65536)
+if c == nil then print("ERR:CITY_NOT_FOUND"); print("{SENTINEL}"); return end
+local bq = c:GetBuildQueue()
+local goldIdx = GameInfo.Yields["YIELD_GOLD"].Index
+local cg = c:GetGold()
+local function goldCost(hash, isUnit)
+    local ok, v = pcall(function()
+        if isUnit then return cg:GetPurchaseCost(goldIdx, hash, MilitaryFormationTypes.STANDARD_MILITARY_FORMATION) end
+        return cg:GetPurchaseCost(goldIdx, hash, -1)
+    end)
+    if ok and v and v > 0 then return math.floor(v) end
+    return -1
+end
+local function cost(row)
+    local v = row.Cost or 0
+    pcall(function() local x = bq:GetProductionCost(row.Hash); if x and x > 0 then v = math.floor(x) end end)
+    return v
+end
+local function emit(cat, typ, row, gold)
+    print("OPT|" .. cat .. "|" .. typ .. "|" .. cost(row) .. "|" .. bq:GetTurnsLeft(row.Hash) .. "|" .. gold)
+end
+for row in GameInfo.Units() do
+    if bq:CanProduce(row.Hash, true) then emit("UNIT", row.UnitType, row, goldCost(row.Hash, true)) end
+end
+for row in GameInfo.Buildings() do
+    if bq:CanProduce(row.Hash, true) then emit("BUILDING", row.BuildingType, row, row.IsWonder and -1 or goldCost(row.Hash, false)) end
+end
+for row in GameInfo.Districts() do
+    if bq:CanProduce(row.Hash, true) then emit("DISTRICT", row.DistrictType, row, -1) end
+end
+for row in GameInfo.Projects() do
+    if bq:CanProduce(row.Hash, true) then emit("PROJECT", row.ProjectType, row, -1) end
+end
+print("{SENTINEL}")
+"""
+    )
+
+
+def parse_production(lines: list[str]) -> list[dict]:
+    out = []
+    for line in lines:
+        if line.startswith("ERR:"):
+            raise ValueError(line)
+        p = line.split("|")
+        if p[0] == "OPT" and len(p) >= 6:
+            try:
+                out.append(
+                    {
+                        "category": p[1],
+                        "item_name": p[2],
+                        "cost": int(float(p[3])),
+                        "turns": int(float(p[4])),
+                        "gold_cost": int(float(p[5])),
+                        "is_repair": False,
+                    }
+                )
+            except ValueError:
+                continue
+    return out
